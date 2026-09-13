@@ -20,6 +20,7 @@ TUNNEL="${TUNNEL:-56c84116-0ef0-47c7-bbea-25634d765487}"
 HOSTNAME_PUBLIC="${HOSTNAME_PUBLIC:-retirement.jbrasfield.com}"
 PORT="${RETIREMENT_PORT:-8891}"
 GIT_URL="${GIT_URL:-git@github.com:jambione/retirement.git}"
+TRADING_SECRETS="${TRADING_SECRETS:-/Users/jambimac/repo/trading-helper/config/secrets.json}"
 
 DO_CLOUDFLARE=1
 CHECK_ONLY=0
@@ -145,6 +146,41 @@ fi
 REMOTE
 fi
 
+# ── 3.5 email ──────────────────────────────────────────────────────────────
+# Same credentials as the trading desk, by pointing at its secrets file rather
+# than keeping a second copy of an iCloud app-specific password in sync.
+say "Email"
+ssh_mini "TRADING_SECRETS='$TRADING_SECRETS' MINI_REPO='$MINI_REPO' bash -s" <<'REMOTE'
+set -uo pipefail
+ENV_FILE="$MINI_REPO/.env"
+[ -f "$ENV_FILE" ] || cp "$MINI_REPO/.env.example" "$ENV_FILE"
+
+if grep -q '^RETIREMENT_SECRETS=' "$ENV_FILE"; then
+  echo "  ✓ already pointed at $(grep '^RETIREMENT_SECRETS=' "$ENV_FILE" | cut -d= -f2-)"
+  exit 0
+fi
+if [ -s "$MINI_REPO/config/secrets.json" ]; then
+  echo "  ✓ this project has its own config/secrets.json — leaving it alone"
+  exit 0
+fi
+if [ ! -f "$TRADING_SECRETS" ]; then
+  echo "  ! no $TRADING_SECRETS on this machine — nothing to point at"
+  exit 0
+fi
+if ! grep -q '"smtp_host"' "$TRADING_SECRETS"; then
+  echo "  ! $TRADING_SECRETS has no smtp_host block, so there is nothing to share."
+  echo "    Add the smtp_* keys there (the trading desk needs them too), or give"
+  echo "    this project its own config/secrets.json."
+  exit 0
+fi
+
+printf '
+RETIREMENT_SECRETS=%s
+' "$TRADING_SECRETS" >> "$ENV_FILE"
+echo "  ✓ using the trading desk's credentials ($TRADING_SECRETS)"
+echo "    Digests go to its notify_to unless DIGEST_TO is set in $ENV_FILE."
+REMOTE
+
 # ── 4. health ──────────────────────────────────────────────────────────────
 say "Health"
 ssh_mini "cd '$MINI_REPO' && ./retire status" || true
@@ -158,11 +194,7 @@ curl -sI --max-time 8 "https://trading.jbrasfield.com" >/dev/null 2>&1 \
 
 # ── 5. what still needs you ────────────────────────────────────────────────
 say "Still on you"
-ssh_mini "test -s '$MINI_REPO/config/secrets.json'" 2>/dev/null \
-  && ok "config/secrets.json present" \
-  || echo "  · no config/secrets.json on the mini — no email digest until there is
-    ssh $MINI_SSH
-    cd $MINI_REPO && cp config/secrets.example.json config/secrets.json && \$EDITOR config/secrets.json"
+ssh_mini "cd '$MINI_REPO' && ./retire doctor 2>/dev/null | grep '^email'" || true
 ssh_mini "grep -q '^IDEALISTA_API_KEY=.\\+' '$MINI_REPO/.env'" 2>/dev/null \
   && ok "Idealista key set" \
   || echo "  · no Idealista key in .env — scans run on manual listings only"
