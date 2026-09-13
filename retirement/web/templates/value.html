@@ -75,7 +75,7 @@ table.vals tr:last-child td{border-bottom:none}
 {% block content %}
 
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-  <div class="eyebrow">Retirement · value / valore</div>
+  <div class="eyebrow">Retirement · price check / verifica prezzo</div>
   <button type="button" class="askb" data-scope="value"
           title="Ask B about the official data" aria-label="Ask B about the official data">B</button>
 </div>
@@ -189,7 +189,7 @@ table.vals tr:last-child td{border-bottom:none}
     </div>
 
     <div class="card" style="margin-top:14px">
-      <span class="eyebrow">Checked so far — controllati</span>
+      <span class="eyebrow">Checked by hand — controllati da te</span>
       {% if scored %}
         <table class="vals" style="margin-top:14px">
           <thead><tr><th>Ref</th><th>Property</th>
@@ -215,8 +215,16 @@ table.vals tr:last-child td{border-bottom:none}
         </table>
       {% else %}
         <p style="margin:12px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6">
-          Nothing checked yet. Every price you check gets a reference like
-          <span class="mono">CIS1001</span> and appears here.
+          Nothing checked by hand yet. Every price you check here gets a reference like
+          <span class="mono">CIS1001</span> and stays on this list.
+        </p>
+      {% endif %}
+
+      {% if scan_scored %}
+        <p style="margin:14px 0 0;font-size:12.5px;color:var(--dim);line-height:1.55">
+          The nightly scan checks its own listings too —
+          <a href="/">{{ scan_scored }} of them</a> carry a price check, shown on their
+          cards on the Property page.
         </p>
       {% endif %}
 

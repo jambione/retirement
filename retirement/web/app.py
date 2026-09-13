@@ -417,13 +417,15 @@ def value_page(request: Request):
 
     conn = db.connect()
     value_store.migrate(conn)
-    # LEFT JOIN, not JOIN: a property scored from the box on this page has no
-    # listing row, and it is still a thing you looked at and gave a number to.
+    # Only what YOU checked: a property typed into the box (no listing row at
+    # all) or a list you uploaded. Everything the nightly scan found is scored
+    # too, but it belongs on the Property page -- repeating it here made two
+    # pages show the same table and neither say why.
     rows = conn.execute(
         """SELECT v.listing_id, v.score, v.ref, v.scored_at, v.breakdown,
                   l.title, l.url, l.price, l.size_sqm, l.municipality, l.province
            FROM value_scores v LEFT JOIN listings l ON l.id = v.listing_id
-           WHERE l.id IS NULL OR l.active = 1
+           WHERE l.id IS NULL OR (l.active = 1 AND l.source = 'upload')
            ORDER BY v.scored_at DESC LIMIT 100"""
     ).fetchall()
     scored = []
@@ -455,6 +457,12 @@ def value_page(request: Request):
             "scored": scored,
             "comune_names": names,
             "coverage": value_store.coverage(conn),
+            # How many of the scan's own listings have a value score, so this
+            # page can point at the Property page rather than duplicate it.
+            "scan_scored": conn.execute(
+                """SELECT COUNT(*) FROM value_scores v JOIN listings l ON l.id = v.listing_id
+                   WHERE l.active = 1 AND l.source <> 'upload'"""
+            ).fetchone()[0],
             **_chrome(),
         },
     )

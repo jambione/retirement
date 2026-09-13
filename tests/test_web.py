@@ -86,3 +86,35 @@ def test_ask_context_says_what_it_can_see(tmp_path, monkeypatch):
 def test_ask_refuses_an_empty_question(tmp_path, monkeypatch):
     r = client(tmp_path, monkeypatch).post("/ask", json={"scope": "brief", "question": "  "})
     assert r.status_code == 400
+
+
+def test_price_check_page_shows_only_what_you_checked_by_hand(tmp_path, monkeypatch):
+    """Two pages, two jobs. The nightly scan's listings are scored too, but they
+    belong on the Property page — repeating them here made both pages show the
+    same table and neither say why."""
+    c = client(tmp_path, monkeypatch)
+    from retirement.core import db
+    from retirement.modules.property import store as listing_store
+    from retirement.modules.property.models import Listing
+    from retirement.modules.value import store as value_store
+
+    conn = db.connect()
+    listing_store.migrate(conn)
+    value_store.migrate(conn)
+
+    for source, ident in (("upload", "mine"), ("idealista", "theirs")):
+        listing_store.upsert(conn, Listing(
+            id=f"{source}:{ident}", source=source, external_id=ident,
+            title=f"House {ident}", price=200000, size_sqm=100,
+            municipality="Cisternino", province="BR", area_id="x",
+        ))
+    hand = value_store.save_score(conn, "upload:mine", {"score": 61.0}, comune="Cisternino")
+    scan = value_store.save_score(conn, "idealista:theirs", {"score": 55.0}, comune="Cisternino")
+    typed = value_store.save_score(conn, "adhoc:abc123", {"score": 48.0}, comune="Ostuni")
+
+    page = c.get("/value")
+    assert page.status_code == 200
+    assert hand in page.text and typed in page.text     # yours
+    assert scan not in page.text                        # the scan's, which lives on /
+    assert "carry a price check" in page.text           # pointed at, not duplicated
+    assert "Price check" in page.text                   # the nav says what it does
