@@ -259,6 +259,55 @@ digest carries it.
 property in a zone, which a house can legitimately sit outside. A listing far
 below the band is a question, not a bargain.
 
+## Value finder — scoring against the official record
+
+The property module answers *is this cheap compared with the other things
+listed near it*. The value module answers a harder question — *is this cheap
+compared with what the Italian state records this place as being worth* — and
+it does it on free, official data only. No paid API, no scraping.
+
+```bash
+./retire value coverage                      # what is loaded, and what is not
+./retire value ispra --prov 074 --stats      # a whole province, free, no login
+./retire value ispra 074005                  # or one comune
+./retire value omi --scan                    # imports everything in data/omi/
+./retire value score --lat 40.743 --lng 17.426 --price 180000 --size 120
+```
+
+The web page is `/value`: a coverage strip, a single-property scorer with the
+full breakdown, and an upload box for a CSV or GeoJSON of your own listings.
+`GET /api/value/coverage`, `POST /api/value/score`, `GET /api/value/search`,
+`/api/value/zones` and `/api/value/stats/comune/{code}` are the same thing
+without the HTML.
+
+**Six components, visible weights**: price against the OMI band (30), gross
+rental yield from the OMI rent band (20), demand and demographics (20),
+market liquidity from NTN (10), amenities from OpenStreetMap (10), minus a
+hazard penalty of up to 25 from ISPRA's flood and landslide mosaics and the
+seismic classification.
+
+The nightly cycle scores every listing twice: the fit score you already had,
+ranked against what else is listed nearby, and the value score, ranked against
+the official record. Both appear on the Property card and in the digest, and
+neither is folded into the other — they answer different questions.
+
+**A component with no data is reported as "no data", never as zero.** Its
+weight is redistributed over the components that do have data, and the answer
+carries a `confidence` figure — the share of the intended weight that actually
+had something behind it — plus a caveat naming what was dropped. A score of 33
+at 22% confidence is not the same claim as 33 at 90%, and the app never lets
+the two look alike.
+
+Every figure carries its source, because most of these licences require it:
+`Agenzia Entrate — OMI`, `ISPRA — IdroGEO`, `ISTAT`, `MEF — Dipartimento delle
+Finanze`, `DPC / INGV`, `© OpenStreetMap contributors`. Where each file comes
+from, what it costs (nothing), how often it changes and which ones need a
+manual download is written out in **[docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)**.
+
+The **B** button on that page reads the same data — coverage, bands, indicators
+and every score breakdown including the gaps — so a question about a place is
+answered from the loaded record rather than from the model's memory of Italy.
+
 ## Configuration
 
 `config/profile.yaml` — household-level, shared by every module, and where

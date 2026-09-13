@@ -176,22 +176,50 @@ def set_decision(conn: sqlite3.Connection, listing_id: str, verdict: str, note: 
 
 
 def latest_shortlist(conn: sqlite3.Connection, limit: int = 50) -> list[dict[str, Any]]:
+    """The shortlist, with the value score beside the fit score when there is one.
+
+    The join is conditional because the two modules are separable: a database
+    that has never run the value finder has no `value_scores` table, and the
+    property page predates it and must keep working without it.
+    """
+    has_value = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'value_scores'"
+    ).fetchone() is not None
+    columns = (", v.score AS value_score, v.breakdown AS value_breakdown"
+               if has_value else "")
+    join = ("           LEFT JOIN value_scores v ON v.listing_id = l.id\n"
+            if has_value else "")
+
     rows = conn.execute(
-        """SELECT l.*, s.total, s.detail, s.rejected, d.verdict, d.note AS decision_note
+        f"""SELECT l.*, s.total, s.detail, s.rejected, d.verdict,
+                   d.note AS decision_note{columns}
            FROM listings l
            JOIN (SELECT listing_id, MAX(scored_at) AS scored_at FROM listing_scores
                  GROUP BY listing_id) latest ON latest.listing_id = l.id
            JOIN listing_scores s
              ON s.listing_id = latest.listing_id AND s.scored_at = latest.scored_at
            LEFT JOIN decisions d ON d.listing_id = l.id
-           WHERE l.active = 1 AND s.rejected IS NULL
+{join}           WHERE l.active = 1 AND s.rejected IS NULL
            ORDER BY s.total DESC
            LIMIT ?""",
         (limit,),
     ).fetchall()
+
     out = []
     for row in rows:
         item = dict(row)
         item["detail"] = json.loads(item["detail"]) if item["detail"] else {}
+        # The value breakdown is a whole document; the card needs the headline
+        # and how much of it rests on data that was actually loaded.
+        raw = item.pop("value_breakdown", None)
+        item.pop("value_score", None)
+        breakdown = json.loads(raw) if raw else {}
+        item["value"] = {
+            "score": breakdown.get("score"),
+            "band": breakdown.get("band"),
+            "confidence": breakdown.get("confidence"),
+            "missing": [c["label"] for c in breakdown.get("components", [])
+                        if c.get("score") is None],
+        } if breakdown else None
         out.append(item)
     return out

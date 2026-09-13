@@ -5,6 +5,7 @@ put Cloudflare Access in front of it -- there is no login here on purpose.
 """
 from __future__ import annotations
 
+import json
 import threading
 from datetime import date, datetime
 from urllib.parse import quote
@@ -27,6 +28,12 @@ BASE = Path(__file__).parent
 app = FastAPI(title="Retirement project")
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
+
+# The value finder is a package of its own: ingestion, scoring and an API that
+# has no opinion about HTML. Mounted here rather than defined here.
+from retirement.modules.value.api import router as value_router  # noqa: E402
+
+app.include_router(value_router)
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -400,6 +407,37 @@ async def ask_run(request: Request):
         return JSONResponse({"error": str(exc)}, status_code=502)
     result["scope"] = scope
     return JSONResponse(result)
+
+
+@app.get("/value", response_class=HTMLResponse)
+def value_page(request: Request):
+    """The investor view: what is loaded, and what the official record says
+    about each listing we hold."""
+    from retirement.modules.value import store as value_store
+
+    conn = db.connect()
+    value_store.migrate(conn)
+    rows = conn.execute(
+        """SELECT v.listing_id, v.score, v.breakdown, l.title, l.url, l.price,
+                  l.size_sqm, l.municipality, l.province
+           FROM value_scores v JOIN listings l ON l.id = v.listing_id
+           WHERE l.active = 1 ORDER BY v.score DESC LIMIT 100"""
+    ).fetchall()
+    scored = []
+    for row in rows:
+        item = dict(row)
+        item["breakdown"] = json.loads(item["breakdown"]) if item["breakdown"] else {}
+        scored.append(item)
+    return templates.TemplateResponse(
+        request,
+        "value.html",
+        {
+            "active": "value",
+            "scored": scored,
+            "coverage": value_store.coverage(conn),
+            **_chrome(),
+        },
+    )
 
 
 @app.get("/healthz")

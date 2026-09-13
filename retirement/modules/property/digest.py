@@ -14,6 +14,8 @@ h1{font-size:20px;margin:0 0 4px;letter-spacing:-0.01em;}
 .card h2 a{color:#1f2421;text-decoration:none;}
 .meta{color:#6b7280;font-size:13px;margin:0 0 10px;}
 .price{font-size:18px;font-weight:600;}
+.value{color:#2f6f56;}
+.value.none{color:#8a8279;}
 .score{float:right;background:#1f2421;color:#fff;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:600;}
 .bars{font-size:12px;color:#4b5563;margin-top:8px;}
 .bar{display:inline-block;margin-right:10px;white-space:nowrap;}
@@ -74,13 +76,26 @@ def _card(item: dict[str, Any]) -> str:
     size = f"{item['size_sqm']:.0f} m²" if item.get("size_sqm") else "size n/a"
     rooms = f" · {item['rooms']} rooms" if item.get("rooms") else ""
 
+    # The second score: against the Agenzia's band and the public record, not
+    # against this week's listings. Confidence travels with it, because a 60
+    # built on one component is not the same claim as a 60 built on five.
+    value = item.get("value") or {}
+    if value.get("score") is not None:
+        official = (f' · <span class="value">official {value["score"]:.0f}'
+                    f' ({value.get("band", "")}, {round((value.get("confidence") or 0) * 100)}%'
+                    " of weight had data)</span>")
+    elif value:
+        official = ' · <span class="value none">no official data to value it against</span>'
+    else:
+        official = ""
+
     return f"""
     <div class="card">
       <span class="score">{detail.get('total', 0):.0f}</span>
       <h2><a href="{item.get('url','#')}">{item.get('title') or 'Untitled listing'}</a></h2>
       <p class="meta">{item.get('municipality','')} {item.get('province','')}{access} · <span class="tag">{item.get('area_id','')}</span> {' '.join(badges)}</p>
       <div class="price">{_euro(item.get('price'))}</div>
-      <p class="meta">{size}{rooms}{comparison}</p>
+      <p class="meta">{size}{rooms}{comparison}{official}</p>
       <div class="bars">{bars}</div>
       {note}
       {concerns}

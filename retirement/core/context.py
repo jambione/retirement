@@ -239,12 +239,135 @@ def finance(conn: sqlite3.Connection, config: dict[str, Any], **_: Any):
     }
 
 
+def value(conn: sqlite3.Connection, config: dict[str, Any], istat: str = "",
+          listing_id: str = "", **_: Any):
+    """What the official record says — and, just as explicitly, what it does not.
+
+    The value model is only as good as the files that have been imported, so
+    this block leads with coverage. A model that cannot see "no OMI quotation
+    is loaded for this comune" will cheerfully reason about a band that does
+    not exist; one that can see it says so instead.
+    """
+    from retirement.modules.value import store as value_store
+
+    coverage = value_store.coverage(conn)
+    lines = [
+        "WHAT OFFICIAL DATA IS LOADED (nothing below is scraped or estimated):",
+        f"- OMI quotations: {coverage['omi_rows']:,} rows across {coverage['omi_comuni']} "
+        f"comuni, semester {coverage['semester'] or 'none'}, "
+        f"{coverage['omi_with_rent']:,} of them carrying a rent band.",
+        f"- OMI zone polygons: {coverage['zones']:,} "
+        f"({'point-in-zone matching is possible' if coverage['zones'] else 'no zone matching — bands fall back to comune grain'}).",
+        f"- Comune indicators: {coverage['stats']:,} figures"
+        + (f" ({', '.join(coverage['stat_metrics'])})" if coverage["stat_metrics"] else "")
+        + ".",
+        f"- Listings scored: {coverage['scored']:,}.",
+    ]
+
+    codes = [istat] if istat else [
+        row["istat"] for row in conn.execute(
+            "SELECT DISTINCT istat FROM comune_stats ORDER BY istat LIMIT 6"
+        ).fetchall()
+    ]
+    for code in [c for c in codes if c]:
+        comune = value_store.resolve_comune(conn, istat=code) or {}
+        stats = value_store.stats_for(conn, code)
+        if not stats:
+            continue
+        lines.append(f"\n{(comune.get('name') or code).upper()} "
+                     f"({code}{', ' + comune['prov'] if comune.get('prov') else ''}):")
+        for metric, item in sorted(stats.items()):
+            year = f" ({item['year']})" if item["year"] else ""
+            lines.append(f"- {metric}{year}: {item['value']:,.2f}".rstrip("0").rstrip(".")
+                         + f"  [{item['source']}]")
+        bands = value_store.comune_bands(conn, istat=code)
+        if bands:
+            sale = [b for b in bands if b["compr_min"]]
+            rent = [b for b in bands if b["loc_min"]]
+            if sale:
+                lines.append(
+                    f"- OMI sale band across {len({b['linkzona'] for b in sale})} zone(s): "
+                    f"€{min(b['compr_min'] for b in sale):,.0f}–"
+                    f"{max(b['compr_max'] for b in sale):,.0f} per m²  [Agenzia Entrate — OMI]"
+                )
+            if rent:
+                lines.append(
+                    f"- OMI rent band: €{min(b['loc_min'] for b in rent):,.2f}–"
+                    f"{max(b['loc_max'] for b in rent):,.2f} per m² per MONTH  "
+                    "[Agenzia Entrate — OMI]"
+                )
+        else:
+            lines.append("- No OMI quotation is loaded for this comune, so no price or "
+                         "yield component can be computed here.")
+
+    try:
+        scored = conn.execute(
+            """SELECT v.listing_id, v.score, v.breakdown, l.title, l.price, l.size_sqm,
+                      l.municipality
+               FROM value_scores v JOIN listings l ON l.id = v.listing_id
+               WHERE l.active = 1 AND (? = '' OR v.listing_id = ?)
+               ORDER BY v.score DESC LIMIT 12""",
+            (listing_id, listing_id),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        scored = []          # no listings table yet: the property module never ran
+    if scored:
+        lines.append("\nSCORED LISTINGS (0-100, with the share of the intended weight that "
+                     "actually had data behind it):")
+        for row in scored:
+            breakdown = json.loads(row["breakdown"]) if row["breakdown"] else {}
+            per_sqm = (f"€{row['price'] / row['size_sqm']:,.0f}/m²"
+                       if row["price"] and row["size_sqm"] else "no €/m²")
+            lines.append(
+                f"- {row['title'] or row['listing_id']} · {row['municipality']} · "
+                f"{_euro(row['price'])} · {per_sqm} · score "
+                f"{(row['score'] if row['score'] is not None else float('nan')):.1f} "
+                f"({breakdown.get('band', '?')}), confidence "
+                f"{round((breakdown.get('confidence') or 0) * 100)}%"
+            )
+            for component in breakdown.get("components", []):
+                state = "no data" if component["score"] is None else f"{component['score']:.0f}"
+                lines.append(f"    · {component['label']}: {state} — {component['detail']}")
+            risk = breakdown.get("risk") or {}
+            if risk.get("score"):
+                lines.append(f"    · {risk['label']}: -{risk['score']} — {risk['detail']}")
+
+    lines.append(
+        "\nHOW TO READ THIS. OMI publishes a BAND for a zone and a typology, not an "
+        "appraisal of a building, and its rent figures are per m² per MONTH. Listing "
+        "prices are asking prices, not transaction prices. A component marked 'no data' "
+        "was not scored at all and its weight was redistributed — it is not a zero, and "
+        "it must not be read as a bad result."
+    )
+
+    return {
+        "title": "The official record",
+        "explains": (
+            "Everything the value model can currently see: which official files are "
+            f"loaded ({coverage['omi_rows']:,} OMI rows, {coverage['stats']:,} comune "
+            "figures), the OMI sale and rent bands and the ISPRA/ISTAT/MEF indicators "
+            "for each comune we hold, and the full score breakdown for every scored "
+            "listing — including which components had no data. Sources are named "
+            "against every figure."
+        ),
+        "context": "\n".join(lines),
+        "rows": coverage["stats"] + coverage["omi_rows"],
+        "suggestions": [
+            "Which of these scores is doing real work, and which is mostly missing data?",
+            "What would change most if I imported the OMI file for these comuni?",
+            "Given the bands and the hazard figures, where would you actually look first?",
+            "What is this data NOT able to tell us about these places?",
+        ],
+    }
+
+
 SCOPES = {
     "brief": brief,
     "finance": finance,
     "shortlist": shortlist,
     "listing": listing,
     "board": board,
+    "value": value,
 }
 
 

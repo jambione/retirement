@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block title %}Value — Retirement{% endblock %}
+
+{% block style %}
+.cov{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+.cov div span{display:block}
+.cov .k{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.cov .v{font-family:var(--mono);font-size:19px;color:var(--ink);margin-top:4px}
+.cov .n{font-size:12px;color:var(--dim);margin-top:2px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:14px;align-items:start}
+@media (max-width:980px){.two{grid-template-columns:1fr}}
+.field{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.result{margin-top:16px;border-top:1px solid var(--line);padding-top:16px}
+.headline{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.headline .num{font-family:var(--mono);font-size:38px;line-height:1;color:var(--accent)}
+.headline .band{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.comp{display:grid;grid-template-columns:minmax(0,1fr) 52px;gap:4px 12px;align-items:baseline;
+  padding:11px 0;border-bottom:1px solid var(--line)}
+.comp:last-child{border-bottom:none}
+.comp .lab{font-size:13.5px;color:var(--ink-2)}
+.comp .sc{font-family:var(--mono);font-size:13px;text-align:right;color:var(--ink)}
+.comp .sc.none{color:var(--dim)}
+.comp .bar{grid-column:1/-1;height:2px;background:var(--line-2);border-radius:2px;overflow:hidden}
+.comp .bar i{display:block;height:2px;background:var(--accent)}
+.comp .det{grid-column:1/-1;font-size:12.5px;color:var(--muted);line-height:1.5}
+.comp .src{grid-column:1/-1;font-size:11.5px;color:var(--dim)}
+.caveat{font-size:12.5px;color:var(--muted);line-height:1.55;padding-left:14px;position:relative}
+.caveat::before{content:"—";position:absolute;left:0;color:var(--dim)}
+table.vals{width:100%;border-collapse:collapse;font-size:13.5px}
+table.vals th{text-align:left;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);font-weight:400;padding:0 0 10px;border-bottom:1px solid var(--line)}
+table.vals td{padding:11px 0;border-bottom:1px solid var(--line);color:var(--ink-2)}
+table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
+.attrib{font-size:12px;color:var(--dim);line-height:1.7;margin-top:26px;
+  border-top:1px solid var(--line);padding-top:14px}
+{% endblock %}
+
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+  <div class="eyebrow">Retirement · value / valore</div>
+  <button type="button" class="askb" data-scope="value"
+          title="Ask B about the official data" aria-label="Ask B about the official data">B</button>
+</div>
+<h1 class="display" style="font-size:27px;letter-spacing:-.015em;margin:6px 0 14px">
+  Against the official record</h1>
+
+<div class="card">
+  <span class="eyebrow">What is loaded — dati caricati</span>
+  <div class="cov" style="margin-top:14px">
+    <div><span class="k">OMI semester</span>
+      <span class="v">{{ coverage.semester or "—" }}</span>
+      <span class="n">Agenzia Entrate</span></div>
+    <div><span class="k">Quotations</span>
+      <span class="v">{{ "{:,}".format(coverage.omi_rows) }}</span>
+      <span class="n">{{ coverage.omi_comuni }} comuni · {{ "{:,}".format(coverage.omi_with_rent) }} with rent</span></div>
+    <div><span class="k">Zone polygons</span>
+      <span class="v">{{ "{:,}".format(coverage.zones) }}</span>
+      <span class="n">for point-in-zone matching</span></div>
+    <div><span class="k">Comune figures</span>
+      <span class="v">{{ "{:,}".format(coverage.stats) }}</span>
+      <span class="n">{{ coverage.stat_metrics|length }} indicators</span></div>
+    <div><span class="k">Scored</span>
+      <span class="v">{{ "{:,}".format(coverage.scored) }}</span>
+      <span class="n">listings held</span></div>
+  </div>
+  {% if not coverage.omi_rows %}
+    <p style="margin:16px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6">
+      No OMI quotations imported yet, so nothing can be scored on price. Put the
+      <span class="mono">QI_*_VALORI_*.csv</span> in <span class="mono">data/omi/</span> and run
+      <span class="mono">./retire value omi --scan</span> —
+      <a href="https://github.com/jambione/retirement/blob/main/docs/DATA_SOURCES.md">DATA_SOURCES.md</a>
+      has the click-path. Hazard and census figures need no download:
+      <span class="mono">./retire value ispra</span>.
+    </p>
+  {% endif %}
+</div>
+
+<div class="two" style="margin-top:14px">
+
+  <div class="card">
+    <span class="eyebrow">Score one property — valuta un immobile</span>
+    <p style="margin:10px 0 16px;font-size:13.5px;color:var(--muted);line-height:1.55">
+      A pin and a price is enough. Everything else narrows the band it is judged against.
+    </p>
+    <div class="field">
+      <div><label for="v-lat">Lat</label><input id="v-lat" value="40.7430" inputmode="decimal"></div>
+      <div><label for="v-lng">Lon</label><input id="v-lng" value="17.4260" inputmode="decimal"></div>
+    </div>
+    <div class="field" style="margin-top:10px">
+      <div><label for="v-price">Price €</label><input id="v-price" value="180000" inputmode="numeric"></div>
+      <div><label for="v-size">Size m²</label><input id="v-size" value="120" inputmode="numeric"></div>
+    </div>
+    <div class="field" style="margin-top:10px">
+      <div><label for="v-typ">Typology</label>
+        <select id="v-typ">
+          <option value="homes">Abitazione civile</option>
+          <option value="villa">Villa / villino</option>
+          <option value="economic">Tipo economico</option>
+          <option value="signorili">Signorile</option>
+        </select></div>
+      <div><label for="v-cond">Condition</label>
+        <select id="v-cond">
+          <option value="good">Normale</option>
+          <option value="newdevelopment">Ottimo / nuovo</option>
+          <option value="renew">Scadente / da ristrutturare</option>
+        </select></div>
+    </div>
+    <div class="field" style="margin-top:10px">
+      <div><label for="v-comune">Comune (if no pin)</label><input id="v-comune" placeholder="Cisternino"></div>
+      <div><label for="v-rent">Asking rent €/month</label><input id="v-rent" placeholder="optional" inputmode="numeric"></div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;
+                    font-size:12.5px;color:var(--muted);margin:0">
+        <input type="checkbox" id="v-osm" style="width:auto"> look up amenities (OpenStreetMap)
+      </label>
+      <span class="grow"></span>
+      <button class="primary" id="v-go">Score it</button>
+    </div>
+    <div id="v-out"></div>
+  </div>
+
+  <div class="card">
+    <span class="eyebrow">Scored listings — immobili valutati</span>
+    {% if scored %}
+      <table class="vals" style="margin-top:14px">
+        <thead><tr><th>Property</th><th style="text-align:right">€</th>
+          <th style="text-align:right">€/m²</th><th style="text-align:right">Score</th></tr></thead>
+        <tbody>
+        {% for row in scored %}
+          <tr>
+            <td>
+              {% if row.url %}<a href="{{ row.url }}" target="_blank" rel="noopener">{{ row.title or row.listing_id }}</a>
+              {% else %}{{ row.title or row.listing_id }}{% endif %}
+              <span style="display:block;font-size:12px;color:var(--dim)">
+                {{ row.municipality }}{% if row.province %} ({{ row.province }}){% endif %}
+                {% if row.breakdown.confidence is not none %}
+                  · {{ (row.breakdown.confidence * 100)|round|int }}% of weight had data
+                {% endif %}
+              </span>
+            </td>
+            <td class="n">{{ "{:,.0f}".format(row.price) if row.price else "—" }}</td>
+            <td class="n">{{ "{:,.0f}".format(row.price / row.size_sqm) if row.price and row.size_sqm else "—" }}</td>
+            <td class="n" style="color:var(--accent)">{{ "%.1f"|format(row.score) if row.score is not none else "—" }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p style="margin:12px 0 18px;font-size:13.5px;color:var(--muted);line-height:1.6">
+        Nothing scored yet. Upload a CSV or GeoJSON of listings — columns
+        <span class="mono">url, title, price, size_m2, lat, lon, comune, province,
+        typology, condition, rent_month</span> — or score a single property on the left.
+      </p>
+    {% endif %}
+
+    <form id="v-upload" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
+      <label for="v-file">Upload listings (CSV or GeoJSON)</label>
+      <input type="file" id="v-file" accept=".csv,.geojson,.json">
+      <div class="row" style="margin-top:10px">
+        <span class="grow" id="v-upload-note" style="font-size:12.5px;color:var(--dim)">
+          Scored on upload, against whatever data is loaded above.</span>
+        <button class="tiny" type="submit">Upload &amp; score</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<p class="attrib">
+  Sources — fonti: <b>Agenzia Entrate — OMI</b> (quotazioni immobiliari; bands, not appraisals) ·
+  <b>ISPRA — IdroGEO</b> (pericolosità frane e alluvioni, CC-BY 4.0) ·
+  <b>ISTAT</b> (comuni, popolazione, turismo) ·
+  <b>MEF — Dipartimento delle Finanze</b> (redditi IRPEF comunali) ·
+  <b>DPC / INGV</b> (classificazione sismica) ·
+  <b>© OpenStreetMap contributors</b> (ODbL).
+  A component with no data behind it is reported as <i>no data</i> and its weight is
+  redistributed — it is never scored as zero.
+</p>
+
+<script>
+(function () {
+  var out = document.getElementById('v-out');
+
+  function num(id) {
+    var raw = (document.getElementById(id).value || '').replace(/[^0-9.\-]/g, '');
+    return raw === '' ? null : parseFloat(raw);
+  }
+
+  function bar(score) {
+    if (score === null || score === undefined) return '';
+    return '<span class="bar"><i style="width:' + Math.max(0, Math.min(100, score)) + '%"></i></span>';
+  }
+
+  function render(data) {
+    if (data.error) { out.innerHTML = '<div class="result ask-err">' + data.error + '</div>'; return; }
+    var html = '<div class="result">';
+    if (data.score === null) {
+      html += '<div class="headline"><span class="band">No score — nothing to score against</span></div>';
+    } else {
+      html += '<div class="headline"><span class="num">' + data.score.toFixed(1) + '</span>' +
+              '<span class="band">' + data.band + '</span>' +
+              '<span style="font-size:12.5px;color:var(--dim)">confidence ' +
+              Math.round(data.confidence * 100) + '% · risk −' + data.risk_penalty + '</span></div>';
+    }
+    if (data.comune && data.comune.name) {
+      html += '<p style="font-size:12.5px;color:var(--dim);margin:8px 0 0">' +
+              data.comune.name + (data.comune.prov ? ' (' + data.comune.prov + ')' : '') +
+              (data.omi_band && data.omi_band.grain ? ' · band at ' + data.omi_band.grain + ' grain' : '') +
+              '</p>';
+    }
+    html += '<div style="margin-top:14px">';
+    (data.components || []).forEach(function (c) {
+      html += '<div class="comp"><span class="lab">' + c.label + '</span>' +
+              '<span class="sc' + (c.score === null ? ' none' : '') + '">' +
+              (c.score === null ? 'no data' : c.score.toFixed(1)) + '</span>' +
+              bar(c.score) +
+              '<span class="det">' + (c.detail || '') + '</span>' +
+              (c.source ? '<span class="src">' + c.source + '</span>' : '') + '</div>';
+    });
+    if (data.risk) {
+      html += '<div class="comp"><span class="lab">' + data.risk.label + '</span>' +
+              '<span class="sc' + (data.risk.score === null ? ' none' : '') + '">' +
+              (data.risk.score === null ? 'no data' : '−' + data.risk.score.toFixed(1)) + '</span>' +
+              '<span class="det">' + (data.risk.detail || '') + '</span>' +
+              (data.risk.source ? '<span class="src">' + data.risk.source + '</span>' : '') + '</div>';
+    }
+    html += '</div><div style="margin-top:14px;display:flex;flex-direction:column;gap:7px">';
+    (data.caveats || []).forEach(function (note) {
+      html += '<span class="caveat">' + note + '</span>';
+    });
+    html += '</div></div>';
+    out.innerHTML = html;
+  }
+
+  document.getElementById('v-go').addEventListener('click', function () {
+    var button = this;
+    button.disabled = true;
+    out.innerHTML = '<div class="result" style="color:var(--muted);font-size:13px">Scoring<span class="dots"></span></div>';
+    fetch('/api/value/score', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        lat: num('v-lat'), lng: num('v-lng'), price: num('v-price'),
+        size_m2: num('v-size'), typology: document.getElementById('v-typ').value,
+        condition: document.getElementById('v-cond').value,
+        comune: document.getElementById('v-comune').value,
+        rent_month: num('v-rent'),
+        fetch_amenities: document.getElementById('v-osm').checked
+      })
+    }).then(function (r) { return r.json(); })
+      .then(render)
+      .catch(function () { out.innerHTML = '<div class="result ask-err">The request failed.</div>'; })
+      .then(function () { button.disabled = false; });
+  });
+
+  document.getElementById('v-upload').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var input = document.getElementById('v-file');
+    var note = document.getElementById('v-upload-note');
+    if (!input.files.length) { note.textContent = 'Pick a file first.'; return; }
+    var body = new FormData();
+    body.append('file', input.files[0]);
+    note.textContent = 'Uploading…';
+    fetch('/api/value/listings/upload', {method: 'POST', body: body})
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) { note.textContent = data.error; return; }
+        note.textContent = data.saved + ' saved, ' + (data.scored || []).length + ' scored'
+          + (data.problems && data.problems.length ? ' · ' + data.problems.length + ' skipped' : '');
+        if (data.saved) { setTimeout(function () { location.reload(); }, 900); }
+      })
+      .catch(function () { note.textContent = 'The upload failed.'; });
+  });
+})();
+</script>
+{% endblock %}

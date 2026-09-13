@@ -27,6 +27,12 @@ class PropertyModule(Module):
         store.migrate(self.conn)
         omi.migrate(self.conn)
         ManualSource(self.conn, self.config).migrate()
+        # The run writes a value score per listing, so its tables belong to this
+        # migration too -- otherwise the first nightly cycle after a deploy is
+        # the thing that discovers they are missing.
+        from retirement.modules.value import store as value_store
+
+        value_store.migrate(self.conn)
 
     # ------------------------------------------------------------------ run
     def run(self, dry_run: bool = False) -> dict[str, Any]:
@@ -48,6 +54,7 @@ class PropertyModule(Module):
         summary["rejected"] = len(rejected)
 
         scored = self._score(survivors, run_id)
+        summary.update(self._value_scores(survivors, scored))
         self.conn.commit()
 
         cfg_digest = self.config.get("digest", {})
@@ -196,6 +203,57 @@ class PropertyModule(Module):
             )
         results.sort(key=lambda r: r["detail"]["total"], reverse=True)
         return results
+
+    # ---------------------------------------------------------- value score
+    def _value_scores(self, survivors: list[Listing],
+                      results: list[dict[str, Any]]) -> dict[str, Any]:
+        """Score every survivor a second time, against the official record.
+
+        Two scores, deliberately not merged into one. `detail["total"]` ranks a
+        listing against what else is for sale in the same radius this week --
+        a small, self-selecting sample. The value score ranks it against the
+        Agenzia's recorded band for the zone and the free public data about the
+        comune. They answer different questions, and the shortlist shows both
+        rather than averaging them into a number that answers neither.
+
+        Reads SQLite only: amenities come from cache, never from Overpass, so a
+        nightly run of fifty listings makes no outbound calls. And the whole
+        thing is wrapped -- a value-module failure must not take down the
+        property run that was working before it existed.
+        """
+        out: dict[str, Any] = {"value_scored": 0, "value_no_data": 0}
+        try:
+            from retirement.modules.value import scoring as value_scoring
+        except Exception as exc:                       # pragma: no cover
+            log.warning("value module unavailable: %s", exc)
+            return out
+
+        by_id = {row["id"]: row for row in results}
+        for listing in survivors:
+            try:
+                breakdown = value_scoring.score_listing(self.conn, listing)
+            except Exception as exc:
+                log.warning("value score failed for %s: %s", listing.id, exc)
+                continue
+            row = by_id.get(listing.id)
+            if row is not None:
+                row["value"] = {
+                    "score": breakdown.get("score"),
+                    "band": breakdown.get("band"),
+                    "confidence": breakdown.get("confidence"),
+                }
+            if breakdown.get("score") is None:
+                out["value_no_data"] += 1
+            else:
+                out["value_scored"] += 1
+        if out["value_scored"] == 0 and out["value_no_data"]:
+            # Worth saying once in the run summary rather than leaving a column
+            # of dashes in the digest with no explanation.
+            out["warnings_value"] = (
+                f"{out['value_no_data']} listings could not be valued: no OMI "
+                "quotation or comune statistics loaded. See docs/DATA_SOURCES.md."
+            )
+        return out
 
     def _assess(self, candidates: list[Listing]) -> dict[str, dict]:
         from retirement.core import llm

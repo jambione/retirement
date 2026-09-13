@@ -120,3 +120,67 @@ def test_digest_renders_without_an_llm(conn):
     assert "Locorotondo" in html
     assert html.count("class=\"card\"") == 2
     assert "https://x.test/a" in text
+
+
+# ── the second score, from the official record ─────────────────────────────
+def test_run_also_scores_against_the_official_record(conn):
+    """The nightly cycle writes both scores. With nothing imported the value
+    score is honestly absent — and the run says so rather than printing a
+    number nothing stands behind."""
+    from retirement.modules.property import store
+    from retirement.modules.value import store as value_store
+
+    FakeSource.payload = [make("a", 180000, 150)]
+    summary = pipeline.PropertyModule(CONFIG, conn).run(dry_run=True)
+
+    assert summary["value_scored"] == 0 and summary["value_no_data"] == 1
+    assert "DATA_SOURCES" in summary["warnings_value"]
+    # a breakdown is still stored, so the page can explain the absence
+    assert value_store.coverage(conn)["scored"] == 1
+    assert store.latest_shortlist(conn)[0]["value"]["score"] is None
+
+
+def test_value_score_appears_once_the_official_data_is_there(conn):
+    from retirement.modules.property import store
+    from retirement.modules.value import store as value_store
+
+    value_store.migrate(conn)
+    value_store.put_extent(conn, "072026", [[17.20, 40.68], [17.40, 40.82]], "test")
+    conn.execute("INSERT INTO comuni (istat, name, name_key, prov) "
+                 "VALUES ('072026','Locorotondo','LOCOROTONDO','BA')")
+    value_store.put_stats(conn, [
+        {"istat": "072026", "metric": "population", "year": "2021", "value": 14000,
+         "source": "ISPRA — IdroGEO"},
+        {"istat": "072026", "metric": "population_2011", "year": "2011", "value": 14100,
+         "source": "ISPRA — IdroGEO"},
+        {"istat": "072026", "metric": "flood_area_p3_pct", "year": "", "value": 0.4,
+         "source": "ISPRA — IdroGEO"},
+    ])
+    conn.commit()
+
+    FakeSource.payload = [make("a", 180000, 150)]
+    summary = pipeline.PropertyModule(CONFIG, conn).run(dry_run=True)
+
+    assert summary["value_scored"] == 1
+    item = store.latest_shortlist(conn)[0]
+    assert item["value"]["score"] is not None
+    assert 0 < item["value"]["confidence"] < 1        # price and yield still absent
+    assert "Price vs OMI band" in item["value"]["missing"]
+
+
+def test_digest_prints_both_scores(conn):
+    from retirement.modules.property import digest
+
+    card = digest._card({
+        "title": "House a", "url": "https://x.test/a", "price": 180000,
+        "size_sqm": 150, "municipality": "Locorotondo",
+        "detail": {"total": 71.2, "components": {}},
+        "value": {"score": 64.0, "band": "fair", "confidence": 0.7},
+    })
+    assert "official 64" in card and "70% of weight had data" in card
+
+    absent = digest._card({
+        "title": "House b", "detail": {"total": 50.0},
+        "value": {"score": None, "band": None, "confidence": 0.0},
+    })
+    assert "no official data" in absent

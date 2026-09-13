@@ -340,6 +340,146 @@ def cmd_ai_test(args) -> int:
     return 0
 
 
+def cmd_value(args) -> int:
+    """The value finder: load official data, then score a property against it.
+
+    Every sub-command here reads a file you downloaded or calls a source that
+    answers without a key. Nothing scrapes, and nothing invents a number when
+    the file it needs is missing -- it says which file, and where it comes from.
+    """
+    from pathlib import Path as _Path
+
+    from retirement.core.config import project_root
+    from retirement.modules.value import scoring, store
+    from retirement.modules.value.ingestion import ispra, istat, mef_irpef, omi, seismic
+
+    conn = db.connect()
+    store.migrate(conn)
+    action = args.action
+
+    def _read(path: str) -> tuple[bytes, str]:
+        target = _Path(path).expanduser()
+        if not target.exists():
+            raise SystemExit(f"no such file: {target}")
+        return target.read_bytes(), target.name
+
+    if action == "omi":
+        if args.scan or not args.file:
+            folder = omi.drop_folder(project_root())
+            results = omi.scan(conn, project_root())
+            if not results:
+                print(f"Nothing in {folder}.")
+                print("  Put the OMI exports there — DATA_SOURCES.md has the click-path:")
+                print("    QI_*_VALORI_*.csv   the quotations (sale AND rent bands)")
+                print("    *.kml / *.geojson   the zone polygons, from Geopoi")
+                return 1
+            for item in results:
+                print(f"  {item.pop('file')}: " +
+                      ", ".join(f"{k}={v}" for k, v in item.items()))
+            return 0
+        data, name = _read(args.file)
+        if args.geometry or name.lower().endswith((".kml", ".kmz", ".geojson", ".json", ".zip")):
+            print(omi.import_geometry(conn, data, name))
+        else:
+            print(omi.import_values(conn, data, name))
+        return 0
+
+    if action == "istat":
+        data, name = _read(args.file)
+        if args.mergers:
+            print(istat.import_mergers(conn, data, name))
+        elif args.metric:
+            print(istat.import_metric(conn, data, name, metric=args.metric, year=args.year,
+                                      value_column=args.value_column,
+                                      code_column=args.code_column))
+        else:
+            print(istat.import_registry(conn, data, name))
+        return 0
+
+    if action == "mef":
+        data, name = _read(args.file)
+        print(mef_irpef.import_file(conn, data, name, year=args.year))
+        return 0
+
+    if action == "seismic":
+        data, name = _read(args.file)
+        print(seismic.import_file(conn, data, name, year=args.year))
+        return 0
+
+    if action == "ispra":
+        if args.prov:
+            result = ispra.ingest_province(conn, args.prov, with_stats=args.stats)
+            print(f"  ✓ province {args.prov}: {result['comuni']} comuni registered"
+                  + (f", {result.get('metrics_written', 0)} figures stored" if args.stats else ""))
+            for code, why in (result.get("failed") or {}).items():
+                print(f"  ✗ {code}  {why[:90]}")
+            if not args.stats:
+                print("  (names and bounding boxes only — add --stats for the figures)")
+            return 0
+        codes = args.comuni or [
+            row["istat"] for row in conn.execute(
+                "SELECT DISTINCT istat FROM omi_zone_values WHERE istat <> ''"
+            ).fetchall()
+        ]
+        if not codes:
+            print("No comune codes given and none in the OMI data yet.")
+            print("  ./retire value ispra 074005 072026   # ISTAT codes")
+            return 1
+        result = ispra.ingest(conn, codes)
+        for item in result["comuni"]:
+            print(f"  ✓ {item['istat']}  {item['nome']}  ({item['metrics']} metrics)")
+        for code, why in result["failed"].items():
+            print(f"  ✗ {code}  {why}")
+        print(f"{result['metrics_written']} figures stored · {result['source']}")
+        return 0
+
+    if action == "score":
+        result = scoring.score(
+            conn, lat=args.lat, lng=args.lng, price=args.price, size_m2=args.size,
+            typology=args.typology, condition=args.condition,
+            asking_rent_month=args.rent, municipality=args.comune, istat=args.istat,
+            fetch_amenities=args.osm,
+        )
+        if args.json:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0
+        head = result["comune"].get("name") or "unknown comune"
+        if result["score"] is None:
+            print(f"No score for {head}: nothing to score against.")
+        else:
+            print(f"{result['score']:.1f}/100  ({result['band']})   {head}")
+            print(f"  confidence {result['confidence'] * 100:.0f}% of the weight had data")
+        for component in result["components"]:
+            mark = "·" if component["score"] is None else "✓"
+            value = "no data" if component["score"] is None else f"{component['score']:5.1f}"
+            print(f"  {mark} {component['label']:<24} {value}   {component['detail']}")
+        risk = result.get("risk") or {}
+        if risk.get("score") is not None:
+            print(f"  ! {'Hazard penalty':<24} -{risk['score']:.1f}   {risk['detail']}")
+        for note in result["caveats"]:
+            print(f"    — {note}")
+        print("    sources: " + ", ".join(result["sources"]))
+        return 0
+
+    if action == "coverage":
+        data = store.coverage(conn)
+        print(f"OMI semester   {data['semester'] or '(nothing imported)'}")
+        print(f"  quotations   {data['omi_rows']:,} rows · {data['omi_comuni']} comuni · "
+              f"{data['omi_with_rent']:,} with a rent band")
+        print(f"  zones        {data['zones']:,} polygons")
+        print(f"comuni         {data['comuni']:,} in the registry")
+        print(f"statistics     {data['stats']:,} figures: "
+              + (", ".join(data["stat_metrics"]) or "none"))
+        print(f"scored         {data['scored']:,} listings")
+        for item in data["imports"]:
+            print(f"  {item['imported_at'][:10]}  {item['source']:<18} {item['filename']}"
+                  f"  ({item['rows']} rows)")
+        return 0
+
+    print(f"unknown action: {action}")
+    return 2
+
+
 def cmd_probe(args) -> int:
     """Make one real call to a source and write the raw response out.
 
@@ -438,6 +578,60 @@ def main(argv: list[str] | None = None) -> int:
     p_omi = sub.add_parser("omi", help="import official OMI market values, or show what is loaded")
     p_omi.add_argument("file", nargs="?", default="", help="path to a ..._VALORI_....csv")
     p_omi.set_defaults(func=cmd_omi)
+
+    p_value = sub.add_parser("value", help="the value finder: official data in, score out")
+    value_sub = p_value.add_subparsers(dest="action", required=True)
+    p_value.set_defaults(func=cmd_value)
+
+    v_omi = value_sub.add_parser("omi", help="import OMI quotations or zone polygons")
+    v_omi.add_argument("file", nargs="?", default="")
+    v_omi.add_argument("--scan", action="store_true", help="import everything in data/omi/")
+    v_omi.add_argument("--geometry", action="store_true", help="force geometry parsing")
+    v_omi.set_defaults(func=cmd_value)
+
+    v_istat = value_sub.add_parser("istat", help="comune registry, mergers, or any metric table")
+    v_istat.add_argument("file")
+    v_istat.add_argument("--mergers", action="store_true", help="this is the soppressi file")
+    v_istat.add_argument("--metric", default="", help="store a value column under this name")
+    v_istat.add_argument("--year", default="")
+    v_istat.add_argument("--value-column", default="")
+    v_istat.add_argument("--code-column", default="")
+    v_istat.set_defaults(func=cmd_value)
+
+    v_mef = value_sub.add_parser("mef", help="IRPEF income by comune")
+    v_mef.add_argument("file")
+    v_mef.add_argument("--year", default="")
+    v_mef.set_defaults(func=cmd_value)
+
+    v_seis = value_sub.add_parser("seismic", help="seismic classification by comune")
+    v_seis.add_argument("file")
+    v_seis.add_argument("--year", default="")
+    v_seis.set_defaults(func=cmd_value)
+
+    v_ispra = value_sub.add_parser("ispra", help="fetch flood/landslide/census figures (no key)")
+    v_ispra.add_argument("comuni", nargs="*", help="ISTAT codes; default: every comune in OMI")
+    v_ispra.add_argument("--prov", default="", help="ISTAT province code, e.g. 074 — "
+                         "registers every comune in it (free, one call)")
+    v_ispra.add_argument("--stats", action="store_true",
+                         help="with --prov: also pull each comune's figures")
+    v_ispra.set_defaults(func=cmd_value)
+
+    v_score = value_sub.add_parser("score", help="score one property against the record")
+    v_score.add_argument("--lat", type=float)
+    v_score.add_argument("--lng", type=float)
+    v_score.add_argument("--price", type=float)
+    v_score.add_argument("--size", type=float, help="m²")
+    v_score.add_argument("--typology", default="")
+    v_score.add_argument("--condition", default="")
+    v_score.add_argument("--rent", type=float, help="asking rent, € per month")
+    v_score.add_argument("--comune", default="")
+    v_score.add_argument("--istat", default="")
+    v_score.add_argument("--osm", action="store_true", help="call Overpass (cached 30 days)")
+    v_score.add_argument("--json", action="store_true")
+    v_score.set_defaults(func=cmd_value)
+
+    v_cov = value_sub.add_parser("coverage", help="what data is actually loaded")
+    v_cov.set_defaults(func=cmd_value)
 
     p_tunnel = sub.add_parser("tunnel", help="tunnel id, process state and recent log")
     p_tunnel.set_defaults(func=cmd_tunnel)

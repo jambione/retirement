@@ -9,3 +9,8 @@ var/
 logs/
 config/secrets.json
 config/cloudflared-config.yml
+
+# Downloaded source files (OMI exports run to tens of MB and are not ours to
+# redistribute). The drop folder is real; its contents are not committed.
+data/
+!data/.gitkeep

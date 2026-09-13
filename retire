@@ -5,6 +5,7 @@
 #   ./retire start|stop|restart|status
 #   ./retire scan [--dry-run]      one property cycle, now
 #   ./retire cycle [--dry-run]     every enabled module
+#   ./retire value <cmd>           the value finder: omi | ispra | score | coverage
 #   ./retire doctor                what is configured (no secrets printed)
 #   ./retire email-test            send one real message to prove it works
 #   ./retire ai-test               send one prompt to the AI backend, show the error
@@ -158,6 +159,7 @@ PYEOF
   probe) need_venv; shift || true; "$PY" -m retirement.cli probe "$@" ;;
   ai-test) need_venv; shift || true; "$PY" -m retirement.cli ai-test "$@" ;;
   tunnel) need_venv; "$PY" -m retirement.cli tunnel ;;
+  value) need_venv; shift || true; "$PY" -m retirement.cli value "$@" ;;
   list) need_venv; "$PY" -m retirement.cli list ;;
   *)    sed -n '2,8p' "$0"; exit 2 ;;
 esac
