@@ -52,13 +52,28 @@ if ! ssh_mini true 2>/dev/null; then
 fi
 ok "ssh to $MINI_SSH"
 
-FIRST_RUN=0
-ssh_mini "test -d '$MINI_REPO/.git'" || FIRST_RUN=1
-[ "$FIRST_RUN" = 1 ] && echo "     repo not there yet — this is a first run"
+# What is actually missing? "The repo is there" is not the same as "it is set
+# up" -- a clone with no .venv and no LaunchAgents serves nothing, and keying
+# the whole bootstrap off .git existing skipped both.
+NEEDS_CLONE=0; NEEDS_SETUP=0; NEEDS_AGENTS=0
+ssh_mini "test -d '$MINI_REPO/.git'" 2>/dev/null || NEEDS_CLONE=1
+if [ "$NEEDS_CLONE" = 0 ]; then
+  ssh_mini "test -x '$MINI_REPO/.venv/bin/python'" 2>/dev/null || NEEDS_SETUP=1
+fi
+ssh_mini "launchctl print gui/\$(id -u)/com.jambi.retirement-web >/dev/null 2>&1" \
+  2>/dev/null || NEEDS_AGENTS=1
+
+if [ "$NEEDS_CLONE"  = 1 ]; then echo "     repo not there yet"; fi
+if [ "$NEEDS_SETUP"  = 1 ]; then echo "     cloned but never set up — no virtualenv"; fi
+if [ "$NEEDS_AGENTS" = 1 ]; then echo "     LaunchAgents not installed"; fi
 
 if [ "$CHECK_ONLY" = 1 ]; then
   say "State"
-  [ "$FIRST_RUN" = 0 ] && ssh_mini "cd '$MINI_REPO' && git log --oneline -1 && ./retire status" || echo "  not deployed"
+  if [ "$NEEDS_CLONE" = 0 ]; then
+    ssh_mini "cd '$MINI_REPO' && git log --oneline -1 && ./retire status" || true
+  else
+    echo "  not deployed"
+  fi
   ssh_mini "grep -q '$HOSTNAME_PUBLIC' ~/.cloudflared/config.yml" 2>/dev/null \
     && ok "ingress rule present" || no "no ingress rule for $HOSTNAME_PUBLIC"
   curl -sI --max-time 6 "https://$HOSTNAME_PUBLIC/healthz" >/dev/null 2>&1 \
@@ -81,21 +96,45 @@ else
 fi
 ok "pushed $BRANCH"
 
-# ── 2. deploy ──────────────────────────────────────────────────────────────
-if [ "$FIRST_RUN" = 1 ]; then
-  say "First deploy"
+# ── 2. code onto the mini ──────────────────────────────────────────────────
+say "Deploy"
+if [ "$NEEDS_CLONE" = 1 ]; then
   ssh_mini "bash -s" <<REMOTE
 set -euo pipefail
 mkdir -p "\$(dirname '$MINI_REPO')"
 git clone '$GIT_URL' '$MINI_REPO'
-cd '$MINI_REPO'
-./retire setup
-scripts/install_agents.sh
 REMOTE
-  ok "cloned, installed, LaunchAgents bootstrapped"
+  ok "cloned from $GIT_URL"
+  NEEDS_SETUP=1
 else
-  say "Deploy"
-  ./scripts/deploy_mini.sh --no-push
+  ./scripts/deploy_mini.sh --no-push --pull-only
+fi
+
+# ── 2b. set up, install agents, start ──────────────────────────────────────
+# Each step is conditional and reported, so a rerun after a failure does the
+# one thing that is still missing rather than everything again.
+if [ "$NEEDS_SETUP" = 1 ]; then
+  say "Virtualenv"
+  ssh_mini "cd '$MINI_REPO' && ./retire setup"
+  ok "dependencies installed"
+fi
+
+say "Service"
+if [ "$NEEDS_AGENTS" = 1 ]; then
+  if ssh_mini "cd '$MINI_REPO' && scripts/install_agents.sh"; then
+    ok "LaunchAgents bootstrapped (web kept alive, 07:15 cycle)"
+  else
+    # gui/<uid> is unreachable when nobody is logged in at the mini's screen.
+    # Start it in the foreground anyway so the tunnel has something to hit;
+    # the agents can be installed later from a session on the machine.
+    no "could not bootstrap the LaunchAgents (is anyone logged in at the mini?)"
+    echo "     starting the service directly so the site works now"
+    ssh_mini "cd '$MINI_REPO' && ./retire restart"
+  fi
+else
+  ssh_mini "launchctl kickstart -k gui/\$(id -u)/com.jambi.retirement-web" >/dev/null 2>&1 \
+    && ok "restarted through the LaunchAgent" \
+    || ssh_mini "cd '$MINI_REPO' && ./retire restart"
 fi
 
 # ── 3. cloudflare ──────────────────────────────────────────────────────────

@@ -102,6 +102,12 @@ REMOTE
 # Only reinstall when the dependency set actually moved -- `uv pip install -e`
 # on every deploy adds twenty seconds for nothing on a plain code edit.
 echo "[3/4] dependencies"
+# A clone with no virtualenv cannot restart, and failing at the restart is a
+# confusing way to report a missing setup step.
+if ! ssh_mini "test -x '$MINI_REPO/.venv/bin/python'"; then
+  echo "   • no virtualenv on the mini — running ./retire setup"
+  ssh_mini "cd '$MINI_REPO' && ./retire setup"
+fi
 if ssh_mini "cd '$MINI_REPO' && git diff --name-only HEAD@{1} HEAD 2>/dev/null | grep -q pyproject.toml"; then
   ssh_mini "cd '$MINI_REPO' && ./retire setup"
 else
