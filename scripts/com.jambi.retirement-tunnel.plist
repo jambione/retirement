@@ -16,6 +16,14 @@
   KeepAlive, and the config is read from this repo. cloudflared re-reads its
   config on SIGHUP; a full restart here never touches the trading tunnel.
 
+  SHELL. /bin/zsh -lc, not bash. This is a zsh account: a login bash reads
+  ~/.bash_profile and never touches ~/.zshrc or ~/.zprofile, so `bash -lc` here
+  produced a bare PATH and every AI backend reported itself missing on a machine
+  where all of them work from a Terminal. trading-helper hit the same wall and
+  worked around it by hardcoding absolute paths (see tools/watchdog.py's
+  CLOUDFLARED_PATHS); this uses the right shell AND pins absolute paths in .env,
+  because either alone is one machine change away from breaking again.
+
   Install: scripts/install_agents.sh
 -->
 <plist version="1.0">
@@ -25,7 +33,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/bash</string>
+    <string>/bin/zsh</string>
     <string>-lc</string>
     <string>cd /Users/jambimac/repo/retirement &amp;&amp; exec "$(command -v cloudflared || echo /opt/homebrew/bin/cloudflared)" --config config/cloudflared-config.yml --no-autoupdate tunnel run</string>
   </array>

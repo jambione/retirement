@@ -132,7 +132,11 @@ if [ "$NEEDS_SETUP" = 1 ]; then
 fi
 
 say "Service"
-if [ "$NEEDS_AGENTS" = 1 ]; then
+# Always re-bootstrap rather than only when missing: a changed plist (a new
+# shell, a new argument) is invisible to "is it loaded", and install_agents.sh
+# is bootout-then-bootstrap, so this is the same restart the deploy performs
+# anyway.
+if true; then
   if ssh_mini "cd '$MINI_REPO' && scripts/install_agents.sh"; then
     ok "LaunchAgents bootstrapped (web, 07:15 cycle, own tunnel)"
   else
