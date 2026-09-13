@@ -100,3 +100,55 @@ def test_module_run_reports_the_board(conn):
     result = BoardModule(CONFIG, conn).run()
     assert result["open"] == 1 and result["done"] == 0
     assert result["summary"]
+
+
+# ── the board must not wait on a model ─────────────────────────────────────
+def test_board_render_never_calls_the_model(tmp_path, monkeypatch):
+    """It used to: summary.build() asked Claude on every page load, six to nine
+    seconds a time, for a sentence that only changes when the board does."""
+    monkeypatch.setenv("RETIREMENT_DB", str(tmp_path / "b.sqlite3"))
+    from retirement.core import db, llm
+    from retirement.modules.board import store, summary
+
+    conn = db.connect()
+    store.migrate(conn)
+    store.add(conn, title="Apply for a codice fiscale", column_id="soon", tag="paperwork")
+
+    monkeypatch.setattr(llm, "available", lambda: True)
+    def explode(*args, **kwargs):
+        raise AssertionError("the render path asked a model")
+    monkeypatch.setattr(llm, "_ask", explode)
+
+    built = summary.build(conn, {"columns": [{"id": "done", "terminal": True}]})
+    assert built["sentence"]                      # the plain one, computed here
+    assert built["sentence_pending"] is True      # and a written one is offered
+
+
+def test_written_sentence_is_cached_per_board_state(tmp_path, monkeypatch):
+    monkeypatch.setenv("RETIREMENT_DB", str(tmp_path / "c.sqlite3"))
+    from retirement.core import db, llm
+    from retirement.modules.board import store, summary
+
+    conn = db.connect()
+    store.migrate(conn)
+    store.add(conn, title="Book the scouting trip", column_id="soon", tag="trip")
+
+    calls = []
+    monkeypatch.setattr(llm, "available", lambda: True)
+    monkeypatch.setattr(llm, "_ask", lambda *a, **k: calls.append(1) or "The trip gates everything.")
+
+    config = {"columns": [{"id": "done", "terminal": True}]}
+    first = summary.write_sentence(conn, config)
+    second = summary.write_sentence(conn, config)
+    assert first["sentence"] == "The trip gates everything."
+    assert second["cached"] is True and len(calls) == 1
+
+    # a changed board is a different question, and gets asked
+    store.add(conn, title="Get a codice fiscale", column_id="soon", tag="paperwork")
+    summary.write_sentence(conn, config)
+    assert len(calls) == 2
+
+    # and once written, the render path serves it without asking anything
+    monkeypatch.setattr(llm, "_ask", lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked")))
+    built = summary.build(conn, config)
+    assert built["sentence"] == "The trip gates everything." or built["sentence_pending"] is False

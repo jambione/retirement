@@ -196,6 +196,9 @@ def board(request: Request):
     conn = db.connect()
     store.migrate(conn)
     config = _board_config()
+    # One read of the cards for both the columns and the summary, and no model
+    # call on this path at all -- the written sentence arrives by fetch.
+    cards = store.by_column(conn)
     return templates.TemplateResponse(
         request,
         "board.html",
@@ -203,12 +206,30 @@ def board(request: Request):
             "active": "board",
             "config": config,
             "columns": config.get("columns", []),
-            "cards": store.by_column(conn),
-            "summary": summary.build(conn, config),
+            "cards": cards,
+            "summary": summary.build(conn, config, cards=cards),
             "today": date.today().isoformat(),
             **_chrome(),
         },
     )
+
+
+@app.get("/board/summary")
+def board_summary():
+    """The written sentence, asked for after the board has already drawn.
+
+    This is the only path that talks to a model, it is cached per board state,
+    and a failure here costs the page nothing -- it keeps the plain sentence it
+    rendered with.
+    """
+    from retirement.modules.board import store, summary
+
+    conn = db.connect()
+    store.migrate(conn)
+    try:
+        return JSONResponse(summary.write_sentence(conn, _board_config()))
+    except Exception as exc:
+        return JSONResponse({"sentence": "", "error": str(exc)}, status_code=502)
 
 
 @app.post("/board/card")

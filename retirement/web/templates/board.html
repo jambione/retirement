@@ -55,7 +55,7 @@
 <div class="card summary">
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.6"
        stroke-linecap="round" style="flex:0 0 16px;margin-top:3px" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
-  <p>{{ summary.sentence }}</p>
+  <p id="board-sentence"{% if summary.sentence_pending %} data-pending="1"{% endif %}>{{ summary.sentence }}</p>
 </div>
 
 <div class="card" style="margin-top:14px">
@@ -197,6 +197,20 @@
         .catch(function () { window.location.reload(); });
     });
   });
+})();
+</script>
+
+<script>
+// The board draws first. If no written sentence exists for this board state
+// yet, ask for one afterwards and swap it in -- a six-second model call has no
+// business sitting inside a page render.
+(function () {
+  var line = document.getElementById('board-sentence');
+  if (!line || !line.dataset.pending) return;
+  fetch('/board/summary')
+    .then(function (r) { return r.json(); })
+    .then(function (data) { if (data && data.sentence) { line.textContent = data.sentence; } })
+    .catch(function () { /* the plain sentence already on screen stands */ });
 })();
 </script>
 {% endblock %}
