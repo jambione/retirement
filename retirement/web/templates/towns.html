@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Towns — Retirement{% endblock %}
+
+{% block style %}
+.lede{font-size:16px;color:var(--ink-2);line-height:1.6;max-width:64ch;margin:10px 0 0}
+.controls{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.6fr) minmax(0,.9fr) auto;
+  gap:10px;align-items:end;margin-top:18px}
+@media (max-width:860px){.controls{grid-template-columns:1fr 1fr}}
+table.towns{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:16px}
+table.towns th{text-align:left;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);font-weight:400;padding:0 10px 10px 0;border-bottom:1px solid var(--line);
+  white-space:nowrap}
+table.towns th.n{text-align:right;padding-right:0}
+table.towns th a{color:var(--faint)} table.towns th a:hover{color:var(--ink-2)}
+table.towns th a.on{color:var(--accent)}
+table.towns td{padding:10px 10px 10px 0;border-bottom:1px solid var(--line);color:var(--ink-2);
+  vertical-align:baseline}
+table.towns td.n{font-family:var(--mono);text-align:right;white-space:nowrap;padding-right:0;
+  font-variant-numeric:tabular-nums}
+table.towns tr:hover td{background:var(--surface-2)}
+table.towns th + th, table.towns td + td{padding-left:16px}
+.town-name{color:var(--ink);font-size:14px}
+.town-sub{display:block;font-size:11.5px;color:var(--dim)}
+.pm{font-size:12px}
+.pm.up{color:var(--good)} .pm.down{color:var(--warn)} .pm.none{color:var(--dim)}
+.haz{font-size:11.5px;color:var(--dim)}
+.haz b{color:var(--warn);font-weight:400}
+.note{font-size:12.5px;color:var(--dim);line-height:1.6;margin-top:14px}
+.empty{color:var(--muted);padding:30px 0;font-size:14px;line-height:1.6}
+{% endblock %}
+
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+  <div class="eyebrow">Retirement · towns / comuni</div>
+  <button type="button" class="askb" data-scope="value"
+          title="Ask B about these towns" aria-label="Ask B about these towns">B</button>
+</div>
+<h1 class="display" style="font-size:27px;letter-spacing:-.015em;margin:6px 0 0">
+  Where should we be looking?</h1>
+<p class="lede">
+  What a square metre actually costs, town by town, from the Agenzia delle Entrate's own
+  record — no listing required. Sorted cheapest first. A town with figures beside it is one
+  of the {{ coverage.stats_comuni }} we also hold flood, landslide and census data for.
+</p>
+
+<form class="controls" method="get" action="/towns">
+  <div>
+    <label for="t-prov">Province</label>
+    <select id="t-prov" name="prov" onchange="this.form.submit()">
+      <option value="">Anywhere in Italy</option>
+      {% if my_provs %}
+        <optgroup label="Your search areas">
+          {% for p in my_provs %}
+            <option value="{{ p }}" {% if prov == p %}selected{% endif %}>{{ p }}</option>
+          {% endfor %}
+        </optgroup>
+      {% endif %}
+      <optgroup label="Everywhere else">
+        {% for p in all_provs %}
+          <option value="{{ p }}" {% if prov == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </optgroup>
+    </select>
+  </div>
+  <div>
+    <label for="t-q">Town name contains</label>
+    <input id="t-q" name="q" value="{{ q }}" placeholder="cisternino, ostuni, locoroton…">
+  </div>
+  <div>
+    <label for="t-budget">Budget €</label>
+    <input id="t-budget" name="budget" value="{{ budget }}" inputmode="numeric">
+  </div>
+  <div><button class="primary" type="submit">Show</button></div>
+  <input type="hidden" name="sort" value="{{ sort }}">
+</form>
+
+{% if rows %}
+  <table class="towns">
+    <thead>
+      <tr>
+        <th><a href="?prov={{ prov }}&q={{ q }}&budget={{ budget }}&sort=name"
+               class="{% if sort == 'name' %}on{% endif %}">Town</a></th>
+        <th class="n"><a href="?prov={{ prov }}&q={{ q }}&budget={{ budget }}&sort=price"
+               class="{% if sort == 'price' %}on{% endif %}">€/m²</a></th>
+        <th class="n">Range across zones</th>
+        <th class="n">€{{ '{:,.0f}'.format(budget)|replace(',','.') }} buys</th>
+        <th class="n"><a href="?prov={{ prov }}&q={{ q }}&budget={{ budget }}&sort=yield"
+               class="{% if sort == 'yield' %}on{% endif %}">Rent yield</a></th>
+        <th class="n"><a href="?prov={{ prov }}&q={{ q }}&budget={{ budget }}&sort=pop"
+               class="{% if sort == 'pop' %}on{% endif %}">Population</a></th>
+        <th>Hazard</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>
+            <a class="town-name" href="/towns/{{ row.istat }}">{{ row.name|title }}</a>
+            <span class="town-sub">{{ row.prov }} · {{ row.regione }} ·
+              {{ row.zones }} zone{{ '' if row.zones == 1 else 's' }}</span>
+          </td>
+          <td class="n">{{ '{:,.0f}'.format(row.sale_mid)|replace(',','.') if row.sale_mid else '—' }}</td>
+          <td class="n" style="color:var(--muted);font-size:12.5px">
+            {{ '{:,.0f}'.format(row.sale_min)|replace(',','.') }}–{{ '{:,.0f}'.format(row.sale_max)|replace(',','.') }}
+          </td>
+          <td class="n">{{ row.buys_m2 }} m²</td>
+          <td class="n">{{ '%.1f'|format(row.yield_pct) ~ '%' if row.yield_pct else '—' }}</td>
+          <td class="n">
+            {% if row.pop_change_pct is not none %}
+              <span class="pm {% if row.pop_change_pct >= 0 %}up{% else %}down{% endif %}">
+                {{ '%+.1f'|format(row.pop_change_pct) }}%</span>
+            {% else %}<span class="pm none">—</span>{% endif %}
+          </td>
+          <td class="haz">
+            {% if row.has_figures %}
+              {% if (row.flood_pct or 0) >= 1 %}<b>flood {{ '%.0f'|format(row.flood_pct) }}%</b>{% endif %}
+              {% if (row.landslide_pct or 0) >= 1 %}<b>slide {{ '%.0f'|format(row.landslide_pct) }}%</b>{% endif %}
+              {% if (row.flood_pct or 0) < 1 and (row.landslide_pct or 0) < 1 %}clear{% endif %}
+            {% else %}<span style="color:var(--dim)">not loaded</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="note">
+    {{ rows|length }} town{{ '' if rows|length == 1 else 's' }} shown.
+    Prices are the middle of the Agenzia's band, averaged across the town's zones — the
+    range beside it is what the cheapest and dearest zones look like, and the town page
+    breaks that out.
+    {% if rows[0].adjusted %}
+      Bands were published for {{ coverage.semester }} and carried forward
+      {{ '%+.1f'|format(rows[0].adjusted.pct) }}% to {{ rows[0].adjusted.to }} using ISTAT's
+      house price index. Rent yields use the rent band as published, which is not carried
+      forward — the index measures purchases.
+    {% endif %}
+    “Population” is the change between the 2011 and 2021 censuses, and is only shown for
+    towns whose figures are loaded.
+  </p>
+{% else %}
+  <p class="empty">
+    {% if not coverage.omi_rows %}
+      No official values loaded yet, so there is nothing to rank. Put the
+      <span class="mono">QI_*_VALORI_*.csv</span> in <span class="mono">data/omi/</span> and run
+      <span class="mono">./retire value omi --scan</span>.
+    {% else %}
+      No town matches that. Try a shorter fragment, or clear the province.
+    {% endif %}
+  </p>
+{% endif %}
+
+<p class="note" style="border-top:1px solid var(--line);padding-top:14px;margin-top:24px">
+  Sources: <b>Agenzia Entrate — OMI</b> (quotazioni immobiliari, semester {{ coverage.semester }}) ·
+  <b>ISTAT — IPAB</b> (carry-forward index) · <b>ISPRA — IdroGEO</b> (flood and landslide,
+  CC-BY 4.0) and its census population. A band is a band, not an appraisal: it says what
+  this kind of property in this zone is worth, not what any particular house is worth.
+</p>
+{% endblock %}

@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}{{ town.name|title }} — Retirement{% endblock %}
+
+{% block style %}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.big{font-family:var(--mono);font-size:44px;line-height:1;color:var(--ink);letter-spacing:-.02em}
+.big small{font-family:var(--sans);font-size:15px;color:var(--muted);letter-spacing:0}
+.spread{font-size:13px;color:var(--muted);margin-top:8px}
+.two{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px;align-items:start;
+  margin-top:14px}
+@media (max-width:960px){.two{grid-template-columns:1fr}}
+.buys{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-top:6px}
+.buys div span{display:block}
+.buys .k{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.buys .v{font-family:var(--mono);font-size:22px;color:var(--accent);margin-top:5px}
+.buys .n{font-size:12px;color:var(--dim);margin-top:3px}
+table.z{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+table.z th{text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);font-weight:400;padding:0 8px 9px 0;border-bottom:1px solid var(--line)}
+table.z td{padding:9px 8px 9px 0;border-bottom:1px solid var(--line);color:var(--ink-2)}
+table.z td.n{font-family:var(--mono);text-align:right;white-space:nowrap;padding-right:0}
+table.z tr:last-child td{border-bottom:none}
+.zone-h{font-size:13.5px;color:var(--ink);margin:18px 0 0}
+.zone-h span{font-size:11.5px;color:var(--dim);margin-left:8px}
+.fig{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:9px 0;
+  border-bottom:1px solid var(--line);color:var(--muted)}
+.fig:last-child{border-bottom:none}
+.fig b{font-family:var(--mono);color:var(--ink-2);font-weight:400}
+.nb{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:8px 0;
+  border-bottom:1px solid var(--line)}
+.nb:last-child{border-bottom:none}
+.nb .n{font-family:var(--mono);color:var(--ink-2)}
+.note{font-size:12.5px;color:var(--dim);line-height:1.6;margin-top:16px}
+{% endblock %}
+
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+  <div class="eyebrow"><a href="/towns" style="color:var(--faint)">Towns</a> ·
+    {{ town.prov }} · {{ town.regione }}</div>
+  <button type="button" class="askb" data-scope="value"
+          title="Ask B about this town" aria-label="Ask B about this town">B</button>
+</div>
+
+<div class="head">
+  <div>
+    <h1 class="display" style="font-size:30px;letter-spacing:-.015em;margin:6px 0 0">
+      {{ town.name|title }}</h1>
+    <p class="spread">
+      {{ town.zones|length }} OMI zone{{ '' if town.zones|length == 1 else 's' }} ·
+      cheapest zone €{{ '{:,.0f}'.format(town.sale_min)|replace(',','.') }}/m²,
+      dearest €{{ '{:,.0f}'.format(town.sale_max)|replace(',','.') }}/m² ·
+      {{ cheaper }} of {{ total_in_prov }} towns in {{ town.prov }} are cheaper
+    </p>
+  </div>
+  <div style="text-align:right">
+    <div class="big">€{{ '{:,.0f}'.format(town.sale_mid)|replace(',','.') }}<small> /m²</small></div>
+    <p class="spread" style="text-align:right">typical, across its zones</p>
+  </div>
+</div>
+
+<div class="two">
+  <div>
+    <div class="card">
+      <span class="eyebrow">What your budget buys here</span>
+      <div class="buys">
+        {% if budget_min %}
+          <div><span class="k">€{{ '{:,.0f}'.format(budget_min)|replace(',','.') }}</span>
+            <span class="v">{{ (budget_min / town.sale_mid)|round|int }} m²</span>
+            <span class="n">at the typical price</span></div>
+        {% endif %}
+        {% if budget_max %}
+          <div><span class="k">€{{ '{:,.0f}'.format(budget_max)|replace(',','.') }}</span>
+            <span class="v">{{ (budget_max / town.sale_mid)|round|int }} m²</span>
+            <span class="n">at the typical price</span></div>
+          <div><span class="k">In the dearest zone</span>
+            <span class="v">{{ (budget_max / town.sale_max)|round|int }} m²</span>
+            <span class="n">€{{ '{:,.0f}'.format(town.sale_max)|replace(',','.') }}/m²</span></div>
+          <div><span class="k">In the cheapest</span>
+            <span class="v">{{ (budget_max / town.sale_min)|round|int }} m²</span>
+            <span class="n">€{{ '{:,.0f}'.format(town.sale_min)|replace(',','.') }}/m²</span></div>
+        {% endif %}
+      </div>
+      {% if town.rent_mid %}
+        <p class="note" style="margin-top:16px">
+          Renting it out: the band is €{{ '%.1f'|format(town.rent_mid) }}/m² a month, so a
+          100 m² house here would ask about
+          €{{ '{:,.0f}'.format(town.rent_mid * 100)|replace(',','.') }} a month —
+          {{ '%.1f'|format(town.rent_mid * 12 / town.sale_mid * 100) }}% gross on the typical
+          purchase price, before IMU, agency and the months it sits empty.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <span class="eyebrow">Zone by zone</span>
+      {% for zone in town.zones %}
+        <p class="zone-h">{{ zone.zona or zone.linkzona }}<span>{{ zone.fascia|lower }}</span></p>
+        <table class="z">
+          <thead><tr><th>Type</th><th>Condition</th>
+            <th class="n">Buy €/m²</th><th class="n">Rent €/m²/month</th></tr></thead>
+          <tbody>
+          {% for t in zone.types %}
+            <tr>
+              <td>{{ t.tipologia }}</td>
+              <td style="color:var(--muted)">{{ t.stato|lower }}</td>
+              <td class="n">
+                {%- if t.sale_min %}{{ '{:,.0f}'.format(t.sale_min)|replace(',','.') }}–{{ '{:,.0f}'.format(t.sale_max)|replace(',','.') }}{% else %}—{% endif -%}
+              </td>
+              <td class="n" style="color:var(--muted)">
+                {%- if t.rent_min %}{{ '%.1f'|format(t.rent_min) }}–{{ '%.1f'|format(t.rent_max) }}{% else %}—{% endif -%}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <span class="eyebrow">The town itself</span>
+      {% if town.stats %}
+        <div style="margin-top:10px">
+          {% if town.stats.population %}
+            <div class="fig"><span>People (2021 census)</span>
+              <b>{{ '{:,.0f}'.format(town.stats.population.value)|replace(',','.') }}</b></div>
+          {% endif %}
+          {% if town.stats.population and town.stats.population_2011 %}
+            {% set change = (town.stats.population.value - town.stats.population_2011.value) / town.stats.population_2011.value * 100 %}
+            <div class="fig"><span>Change since 2011</span>
+              <b style="color:{% if change >= 0 %}var(--good){% else %}var(--warn){% endif %}">
+                {{ '%+.1f'|format(change) }}%</b></div>
+          {% endif %}
+          {% if town.stats.pop_young_pct %}
+            <div class="fig"><span>Under 15</span>
+              <b>{{ '%.1f'|format(town.stats.pop_young_pct.value) }}%</b></div>
+          {% endif %}
+          {% if town.stats.pop_elderly_pct %}
+            <div class="fig"><span>65 and over</span>
+              <b>{{ '%.1f'|format(town.stats.pop_elderly_pct.value) }}%</b></div>
+          {% endif %}
+          {% if town.stats.households %}
+            <div class="fig"><span>Households</span>
+              <b>{{ '{:,.0f}'.format(town.stats.households.value)|replace(',','.') }}</b></div>
+          {% endif %}
+          {% if town.stats.flood_area_p3_pct %}
+            <div class="fig"><span>Land at high flood hazard</span>
+              <b>{{ '%.1f'|format(town.stats.flood_area_p3_pct.value) }}%</b></div>
+          {% endif %}
+          {% if town.stats.landslide_area_p3p4_pct %}
+            <div class="fig"><span>Land at high landslide hazard</span>
+              <b>{{ '%.1f'|format(town.stats.landslide_area_p3p4_pct.value) }}%</b></div>
+          {% endif %}
+        </div>
+        <p class="note">ISPRA — IdroGEO, and the 2011/2021 censuses.</p>
+      {% else %}
+        <p class="note" style="margin-top:10px">
+          No figures loaded for this comune — only its prices. Population, age mix and
+          hazard come from <span class="mono">./retire value ispra --prov {{ town.istat[:3] }} --stats</span>,
+          which is free and takes a minute.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <span class="eyebrow">Cheaper and dearer in {{ town.prov }}</span>
+      <div style="margin-top:10px">
+        {% for n in neighbours %}
+          <div class="nb">
+            <a href="/towns/{{ n.istat }}">{{ n.name|title }}</a>
+            <span class="n">€{{ '{:,.0f}'.format(n.sale_mid)|replace(',','.') }}/m²</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <span class="eyebrow">Found a house here?</span>
+      <p class="note" style="margin-top:8px">
+        Put its price and size into <a href="/value">Price check</a> and it will be judged
+        against this town's own band, zone by zone, rather than against whatever else is
+        listed this week.
+      </p>
+    </div>
+  </div>
+</div>
+
+<p class="note" style="border-top:1px solid var(--line);padding-top:14px;margin-top:24px">
+  <b>Agenzia Entrate — OMI</b>, semester {{ town.semester }}.
+  {% if town.adjusted %}
+    Carried forward {{ '%+.1f'|format(town.adjusted.pct) }}% to {{ town.adjusted.to }} with
+    ISTAT's house price index for {{ town.adjusted.area }} — a regional average applied to one
+    town, which the current semester would replace. Rents are as published, not carried
+    forward: the index measures purchases.
+  {% endif %}
+  A band prices a type of property in a zone. It is not a valuation of any particular house,
+  and a house can sit outside it for good reasons.
+</p>
+{% endblock %}

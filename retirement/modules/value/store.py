@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from statistics import median
 from typing import Any, Iterable
 
 from retirement.core.db import utcnow
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS omi_zone_values (
     comune_key TEXT NOT NULL,              -- normalised name, the fallback join
     comune     TEXT NOT NULL DEFAULT '',
     prov       TEXT NOT NULL DEFAULT '',
+    regione    TEXT NOT NULL DEFAULT '',   -- picks the index area for the carry-forward
     linkzona   TEXT NOT NULL DEFAULT '',   -- OMI zone id; joins to omi_zones
     zona       TEXT NOT NULL DEFAULT '',
     fascia     TEXT NOT NULL DEFAULT '',   -- centrale / semicentrale / periferica / ...
@@ -163,6 +165,9 @@ def migrate(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     # CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so
     # a column added after the first release needs its own idempotent step.
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(omi_zone_values)")}
+    if "regione" not in columns:
+        conn.execute("ALTER TABLE omi_zone_values ADD COLUMN regione TEXT NOT NULL DEFAULT ''")
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(value_scores)")}
     if "ref" not in columns:
         conn.execute("ALTER TABLE value_scores ADD COLUMN ref TEXT")
@@ -585,3 +590,137 @@ def index_factor(conn: sqlite3.Connection, area: str, semester: str,
     return {"factor": round(factor, 4), "from": base_period, "to": latest["period"],
             "area": area, "series": series, "source": latest["source"],
             "pct": round((factor - 1) * 100, 1)}
+
+
+# ── towns: the view that needs no listing at all ───────────────────────────
+def town_rows(conn: sqlite3.Connection, prov: str = "", query: str = "",
+              limit: int = 300, semester: str = "") -> list[dict[str, Any]]:
+    """One row per comune: the typical €/m², the spread across its zones, and
+    whatever figures we hold about the place.
+
+    Aggregated in SQL rather than per-town in Python because this is the page
+    that answers "where should we even look", and it has to draw instantly over
+    seven thousand comuni.
+    """
+    semester = semester or latest_semester(conn)
+    if not semester:
+        return []
+    where, args = ["v.semester = ?", "v.compr_min IS NOT NULL"], [semester]
+    if prov:
+        where.append("v.prov = ?")
+        args.append(prov.upper())
+    if query:
+        where.append("v.comune_key LIKE ?")
+        args.append(f"%{query.upper()}%")
+    args.append(limit)
+
+    rows = conn.execute(
+        f"""SELECT v.comune AS name, v.comune_key, v.prov, v.regione, v.istat,
+                   COUNT(DISTINCT v.linkzona) AS zones,
+                   AVG((v.compr_min + v.compr_max) / 2.0) AS sale_mid,
+                   MIN(v.compr_min) AS sale_min, MAX(v.compr_max) AS sale_max,
+                   AVG((v.loc_min + v.loc_max) / 2.0) AS rent_mid
+            FROM omi_zone_values v
+            WHERE {' AND '.join(where)}
+            GROUP BY v.comune_key
+            ORDER BY sale_mid
+            LIMIT ?""",
+        args,
+    ).fetchall()
+
+    # The figures we hold for these comuni, in one more query rather than one
+    # per town.
+    codes = tuple({r["istat"] for r in rows if r["istat"]})
+    figures: dict[str, dict[str, float]] = {}
+    if codes:
+        marks = ",".join("?" * len(codes))
+        for stat in conn.execute(
+            f"""SELECT istat, metric, value FROM comune_stats
+                WHERE istat IN ({marks}) AND metric IN
+                  ('population','population_2011','pop_young_pct','pop_elderly_pct',
+                   'flood_area_p3_pct','landslide_area_p3p4_pct')""",
+            codes,
+        ):
+            figures.setdefault(stat["istat"], {})[stat["metric"]] = stat["value"]
+
+    out = []
+    for row in rows:
+        item = dict(row)
+        stats = figures.get(item["istat"] or "", {})
+        move = index_factor(conn, _area_for(item["regione"]), semester)
+        factor = move["factor"] if move else 1.0
+        item["adjusted"] = move
+        for key in ("sale_mid", "sale_min", "sale_max"):
+            item[key] = round((item[key] or 0) * factor) or None
+        item["rent_mid"] = round(item["rent_mid"], 2) if item["rent_mid"] else None
+        item["yield_pct"] = (round(item["rent_mid"] * 12 / item["sale_mid"] * 100, 1)
+                             if item["rent_mid"] and item["sale_mid"] else None)
+        item["population"] = stats.get("population")
+        item["pop_change_pct"] = (
+            round((stats["population"] - stats["population_2011"])
+                  / stats["population_2011"] * 100, 1)
+            if stats.get("population") and stats.get("population_2011") else None
+        )
+        item["young_pct"] = stats.get("pop_young_pct")
+        item["flood_pct"] = stats.get("flood_area_p3_pct")
+        item["landslide_pct"] = stats.get("landslide_area_p3p4_pct")
+        item["has_figures"] = bool(stats)
+        out.append(item)
+    return out
+
+
+def _area_for(region: str) -> str:
+    from retirement.modules.value.ingestion.istat_hpi import area_for
+
+    return area_for(region)
+
+
+def town_detail(conn: sqlite3.Connection, istat: str = "", comune_key: str = "",
+                semester: str = "") -> dict[str, Any] | None:
+    """Everything held about one town: every zone's band, the figures, and the
+    towns around it for comparison."""
+    semester = semester or latest_semester(conn)
+    where = "istat = ?" if istat else "comune_key = ?"
+    bands = [dict(r) for r in conn.execute(
+        f"""SELECT * FROM omi_zone_values WHERE {where} AND semester = ?
+            ORDER BY zona, tipologia, stato""",
+        ((istat or comune_key), semester),
+    ).fetchall()]
+    if not bands:
+        return None
+
+    head = bands[0]
+    move = index_factor(conn, _area_for(head["regione"]), semester)
+    factor = move["factor"] if move else 1.0
+
+    zones: dict[str, dict[str, Any]] = {}
+    for band in bands:
+        zone = zones.setdefault(band["linkzona"] or band["zona"], {
+            "linkzona": band["linkzona"], "zona": band["zona"],
+            "fascia": band["fascia"], "types": [],
+        })
+        zone["types"].append({
+            "tipologia": band["tipologia"], "stato": band["stato"],
+            "sale_min": round((band["compr_min"] or 0) * factor) or None,
+            "sale_max": round((band["compr_max"] or 0) * factor) or None,
+            "rent_min": band["loc_min"], "rent_max": band["loc_max"],
+        })
+
+    sale_mids = [(b["compr_min"] + b["compr_max"]) / 2 * factor
+                 for b in bands if b["compr_min"] and b["compr_max"]]
+    rent_mids = [(b["loc_min"] + b["loc_max"]) / 2
+                 for b in bands if b["loc_min"] and b["loc_max"]]
+
+    return {
+        "name": head["comune"], "prov": head["prov"], "regione": head["regione"],
+        "istat": head["istat"], "semester": semester, "adjusted": move,
+        "zones": sorted(zones.values(), key=lambda z: z["zona"]),
+        "sale_mid": round(median(sale_mids)) if sale_mids else None,
+        "sale_min": round(min(b["compr_min"] for b in bands if b["compr_min"]) * factor)
+                    if any(b["compr_min"] for b in bands) else None,
+        "sale_max": round(max(b["compr_max"] for b in bands if b["compr_max"]) * factor)
+                    if any(b["compr_max"] for b in bands) else None,
+        "rent_mid": round(median(rent_mids), 2) if rent_mids else None,
+        "stats": stats_for(conn, head["istat"]) if head["istat"] else {},
+        "source": "Agenzia Entrate — OMI",
+    }

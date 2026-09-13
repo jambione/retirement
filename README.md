@@ -259,6 +259,18 @@ digest carries it.
 property in a zone, which a house can legitimately sit outside. A listing far
 below the band is a question, not a bargain.
 
+## Towns — where to look, before there is anything to look at
+
+`/towns` ranks every comune the Agenzia prices — 7,905 of them — by what a
+square metre actually costs, and turns that into the only number that matters
+at this stage: **what your budget buys there**. Filter by province, search by
+name, sort by price, rent yield or population trend. Click a town for its zones
+broken out, its census figures, its flood and landslide exposure, and the towns
+around it ranked cheaper and dearer.
+
+It needs no listing, no portal key and no scan. Every other page in this app
+waits for a property to exist; this one reads the official record straight.
+
 ## Value finder — scoring against the official record
 
 The property module answers *is this cheap compared with the other things

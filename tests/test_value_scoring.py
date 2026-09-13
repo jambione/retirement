@@ -445,3 +445,53 @@ def test_index_parser_keeps_levels_and_drops_changes():
     assert len(rows) == 2
     assert {r["series"] for r in rows} == {"hpi_existing", "hpi_new"}
     assert rows[0]["value"] == 107.1
+
+
+# ── the towns view: answers before any listing exists ──────────────────────
+def seed_town(conn: sqlite3.Connection, name: str, key: str, istat: str,
+              low: float, high: float, prov: str = "BR", zone: str = "B1") -> None:
+    conn.execute(
+        """INSERT OR REPLACE INTO omi_zone_values
+             (semester, istat, comune_key, comune, prov, regione, linkzona, zona, fascia,
+              tipologia, stato, compr_min, compr_max, loc_min, loc_max)
+           VALUES ('2018-2',?,?,?,?,'Puglia',?,?,'centrale',
+                   'abitazioni civili','NORMALE',?,?,4.0,6.0)""",
+        (istat, key, name, prov, f"{prov}{zone}", zone, low, high),
+    )
+    conn.commit()
+
+
+def test_town_rows_rank_by_price_and_carry_the_index(conn):
+    seed_town(conn, "CISTERNINO", "CISTERNINO", "074005", 1000, 1200)
+    seed_town(conn, "OSTUNI", "OSTUNI", "074010", 1400, 1800)
+    store.put_index(conn, [
+        {"series": "hpi_existing", "area": "ITFG", "period": "2018-Q4", "value": 100.0,
+         "source": "ISTAT — IPAB"},
+        {"series": "hpi_existing", "area": "ITFG", "period": "2025-Q4", "value": 110.0,
+         "source": "ISTAT — IPAB"},
+    ])
+    rows = store.town_rows(conn)
+    assert [r["name"] for r in rows] == ["CISTERNINO", "OSTUNI"]     # cheapest first
+    assert rows[0]["sale_mid"] == round(1100 * 1.10)                 # index applied
+    assert rows[0]["adjusted"]["pct"] == pytest.approx(10.0, abs=0.1)
+    assert rows[0]["yield_pct"] == pytest.approx(5.0 * 12 / 1210 * 100, abs=0.1)
+
+
+def test_town_rows_filter_by_province_and_name(conn):
+    seed_town(conn, "CISTERNINO", "CISTERNINO", "074005", 1000, 1200, prov="BR")
+    seed_town(conn, "DESENZANO DEL GARDA", "DESENZANO DEL GARDA", "017067", 3000, 4000, prov="BS")
+    assert len(store.town_rows(conn, prov="BR")) == 1
+    assert len(store.town_rows(conn, prov="bs")) == 1                # case does not matter
+    assert store.town_rows(conn, query="cistern")[0]["name"] == "CISTERNINO"
+    assert store.town_rows(conn, query="zzz") == []
+
+
+def test_town_detail_groups_the_zones_and_carries_the_figures(conn):
+    seed_town(conn, "CISTERNINO", "CISTERNINO", "074005", 1000, 1200, zone="B1")
+    seed_town(conn, "CISTERNINO", "CISTERNINO", "074005", 600, 800, zone="C1")
+    seed_stats(conn)
+    detail = store.town_detail(conn, istat="074005")
+    assert detail["name"] == "CISTERNINO" and len(detail["zones"]) == 2
+    assert detail["sale_min"] == 600 and detail["sale_max"] == 1200
+    assert detail["stats"]["population"]["value"] == 11231
+    assert store.town_detail(conn, istat="999999") is None

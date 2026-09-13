@@ -489,6 +489,89 @@ def value_page(request: Request):
     )
 
 
+@app.get("/towns", response_class=HTMLResponse)
+def towns(request: Request, prov: str = "", q: str = "", budget: int = 0,
+          sort: str = "price"):
+    """Where to look, before there is anything to look at.
+
+    Every other page in this app waits for a listing to exist. This one does
+    not: it reads the official record straight, so "which of these towns can we
+    afford, and which are emptying out" has an answer on a machine with no
+    portal key, no scan and no shortlist.
+    """
+    from retirement.modules.value import store as value_store
+
+    conn = db.connect()
+    value_store.migrate(conn)
+    config = _property_config()
+    budget = budget or int(((config.get("budget") or {}).get("max") or 300000))
+
+    rows = value_store.town_rows(conn, prov=prov, query=q, limit=400)
+    if sort == "pop":
+        rows.sort(key=lambda r: (r["pop_change_pct"] is None, -(r["pop_change_pct"] or 0)))
+    elif sort == "yield":
+        rows.sort(key=lambda r: (r["yield_pct"] is None, -(r["yield_pct"] or 0)))
+    elif sort == "name":
+        rows.sort(key=lambda r: r["name"])
+
+    for row in rows:
+        row["buys_m2"] = round(budget / row["sale_mid"]) if row.get("sale_mid") else None
+
+    # Provinces, with the ones our search areas sit in offered first: those are
+    # the ones that also have the flood, landslide and census figures.
+    mine = [r[0] for r in conn.execute(
+        """SELECT DISTINCT c.prov FROM comuni c JOIN comune_stats s ON s.istat = c.istat
+           WHERE c.prov <> '' ORDER BY c.prov"""
+    ).fetchall()]
+    every = [r[0] for r in conn.execute(
+        "SELECT DISTINCT prov FROM omi_zone_values WHERE prov <> '' ORDER BY prov"
+    ).fetchall()]
+
+    return templates.TemplateResponse(
+        request,
+        "towns.html",
+        {
+            "active": "towns", "rows": rows, "prov": prov.upper(), "q": q,
+            "budget": budget, "sort": sort,
+            "my_provs": mine, "all_provs": [p for p in every if p not in mine],
+            "coverage": value_store.coverage(conn),
+            "areas": config.get("areas", []),
+            **_chrome(),
+        },
+    )
+
+
+@app.get("/towns/{istat}", response_class=HTMLResponse)
+def town(request: Request, istat: str):
+    from retirement.modules.value import store as value_store
+
+    conn = db.connect()
+    value_store.migrate(conn)
+    detail = value_store.town_detail(conn, istat=istat)
+    if detail is None:
+        return RedirectResponse("/towns", status_code=303)
+
+    config = _property_config()
+    budget = config.get("budget") or {}
+    neighbours = [r for r in value_store.town_rows(conn, prov=detail["prov"], limit=400)
+                  if r["istat"] != detail["istat"]]
+    place = min(range(len(neighbours) + 1),
+                key=lambda i: abs((neighbours[i]["sale_mid"] if i < len(neighbours) else 0)
+                                  - (detail["sale_mid"] or 0)))
+    return templates.TemplateResponse(
+        request,
+        "town.html",
+        {
+            "active": "towns", "town": detail, "neighbours": neighbours[:12],
+            "cheaper": sum(1 for n in neighbours
+                           if (n["sale_mid"] or 0) < (detail["sale_mid"] or 0)),
+            "total_in_prov": len(neighbours) + 1,
+            "budget_min": budget.get("min"), "budget_max": budget.get("max"),
+            **_chrome(),
+        },
+    )
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": True}

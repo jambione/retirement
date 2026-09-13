@@ -44,6 +44,7 @@ COLUMNS = {
     "comune": ("Comune_descrizione", "Comune_amm", "COMUNE_DESCRIZIONE"),
     "istat": ("Comune_ISTAT", "Comune_Istat", "COMUNE_ISTAT", "Codice_Istat"),
     "prov": ("Prov", "PROV", "Provincia"),
+    "regione": ("Regione", "REGIONE", "Regione_descrizione"),
     "zona": ("Zona", "ZONA", "Zona_Descr"),
     "linkzona": ("LinkZona", "Linkzona", "LINKZONA", "Link_Zona"),
     "fascia": ("Fascia", "FASCIA"),
@@ -128,6 +129,10 @@ def parse_values(data: bytes, filename: str = "") -> list[dict[str, Any]]:
             "comune_key": normalise(comune),
             "comune": comune,
             "prov": _cell(row, "prov"),
+            # The region is in the file and is what picks the index area for the
+            # carry-forward. Without it only the 497 comuni ISPRA registered
+            # could be aged, and the other 7,400 would silently stay in 2018.
+            "regione": _cell(row, "regione").title(),
             "linkzona": _cell(row, "linkzona"),
             "zona": _cell(row, "zona"),
             "fascia": _cell(row, "fascia"),
@@ -148,10 +153,10 @@ def import_values(conn: sqlite3.Connection, data: bytes, filename: str) -> dict[
     rows = parse_values(data, filename)
     conn.executemany(
         """INSERT OR REPLACE INTO omi_zone_values
-             (semester, istat, comune_key, comune, prov, linkzona, zona, fascia,
-              tipologia, stato, compr_min, compr_max, loc_min, loc_max)
-           VALUES (:semester,:istat,:comune_key,:comune,:prov,:linkzona,:zona,:fascia,
-                   :tipologia,:stato,:compr_min,:compr_max,:loc_min,:loc_max)""",
+             (semester, istat, comune_key, comune, prov, regione, linkzona, zona,
+              fascia, tipologia, stato, compr_min, compr_max, loc_min, loc_max)
+           VALUES (:semester,:istat,:comune_key,:comune,:prov,:regione,:linkzona,:zona,
+                   :fascia,:tipologia,:stato,:compr_min,:compr_max,:loc_min,:loc_max)""",
         rows,
     )
     conn.commit()
