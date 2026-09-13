@@ -138,53 +138,94 @@ else
 fi
 
 # ── 3. cloudflare ──────────────────────────────────────────────────────────
+# The tunnel is not configured the way cloudflared's docs assume. On this
+# machine the ingress list lives in the trading-helper repo
+# (config/cloudflared-config.yml, passed with --config), the binary is in
+# Homebrew, and an ssh session's PATH has neither. So find both rather than
+# guessing, and say plainly when they are not there.
 if [ "$DO_CLOUDFLARE" = 1 ]; then
   say "Cloudflare"
 
-  # DNS: idempotent. Already-exists is a success, not a failure.
-  if ssh_mini "cloudflared tunnel route dns '$TUNNEL' '$HOSTNAME_PUBLIC'" 2>&1 | tail -1; then
-    ok "DNS route for $HOSTNAME_PUBLIC"
-  else
-    ok "DNS route already in place (or reported as existing)"
-  fi
-
-  # Ingress: back up, insert above the catch-all, validate, reload, roll back
-  # on failure. This file is what keeps trading.jbrasfield.com up.
-  # Ingress: copy the editor up, back up, edit, validate, reload — rolling
-  # back if the config does not validate. This file is what keeps
-  # trading.jbrasfield.com up, so nothing here is done in place and unchecked.
   scp -q scripts/cloudflare_ingress.py "$MINI_SSH:/tmp/cloudflare_ingress.py"
-  ssh_mini "HOSTNAME_PUBLIC='$HOSTNAME_PUBLIC' PORT='$PORT' bash -s" <<'REMOTE'
+  ssh_mini "HOSTNAME_PUBLIC='$HOSTNAME_PUBLIC' PORT='$PORT' TUNNEL='$TUNNEL' \
+            CF_CONFIG='${CF_CONFIG:-}' bash -s" <<'REMOTE'
 set -uo pipefail
-CFG="$HOME/.cloudflared/config.yml"
-[ -f "$CFG" ] || { echo "  ✗ no $CFG — is this the machine running the tunnel?"; exit 1; }
+PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
+CFD="$(command -v cloudflared 2>/dev/null || true)"
+[ -z "$CFD" ] && [ -x /opt/homebrew/bin/cloudflared ] && CFD=/opt/homebrew/bin/cloudflared
+[ -z "$CFD" ] && [ -x /usr/local/bin/cloudflared ]    && CFD=/usr/local/bin/cloudflared
+if [ -z "$CFD" ]; then
+  echo "  ✗ cloudflared is not installed on this machine — nothing to configure"
+  exit 1
+fi
+echo "  · cloudflared at $CFD"
+
+for candidate in "$CF_CONFIG" \
+                 "$HOME/repo/trading-helper/config/cloudflared-config.yml" \
+                 "$HOME/.cloudflared/config.yml"; do
+  [ -n "$candidate" ] && [ -f "$candidate" ] && { CFG="$candidate"; break; }
+done
+if [ -z "${CFG:-}" ]; then
+  echo "  ✗ no cloudflared ingress config found. Looked in:"
+  echo "      \$HOME/repo/trading-helper/config/cloudflared-config.yml"
+  echo "      \$HOME/.cloudflared/config.yml"
+  echo "    Pass the real one:  CF_CONFIG=/path/to/config.yml ./scripts/ship.sh"
+  exit 1
+fi
+echo "  · ingress config $CFG"
+
+# DNS. Distinguish "already there" from "failed" -- reporting both as success
+# is how you end up debugging a hostname that was never routed.
+ROUTE_OUT="$("$CFD" tunnel route dns "$TUNNEL" "$HOSTNAME_PUBLIC" 2>&1)"; ROUTE_RC=$?
+if [ "$ROUTE_RC" = 0 ]; then
+  echo "  ✓ DNS route created"
+elif printf '%s' "$ROUTE_OUT" | grep -qi 'already\|exists\|duplicate'; then
+  echo "  ✓ DNS route already in place"
+else
+  echo "  ✗ could not create the DNS route:"
+  printf '      %s\n' "$ROUTE_OUT" | head -4
+  echo "    If it mentions a missing cert.pem, run: $CFD tunnel login"
+  exit 1
+fi
+
+# Ingress.
 BACKUP="$CFG.$(date +%Y%m%d-%H%M%S).bak"
 cp "$CFG" "$BACKUP"
-
 python3 /tmp/cloudflare_ingress.py "$CFG" "$HOSTNAME_PUBLIC" "$PORT"
 STATUS=$?
-if [ "$STATUS" = 2 ]; then rm -f "$BACKUP"; exit 0; fi          # already there
+if [ "$STATUS" = 2 ]; then rm -f "$BACKUP"; exit 0; fi          # already present
 if [ "$STATUS" != 0 ]; then cp "$BACKUP" "$CFG"; exit 1; fi     # refused
 echo "  · backed up to $BACKUP"
 
-if command -v cloudflared >/dev/null 2>&1; then
-  if cloudflared --config "$CFG" tunnel ingress validate; then
-    echo "  ✓ config validates"
-  else
-    cp "$BACKUP" "$CFG"
-    echo "  ✗ config did NOT validate — rolled back, tunnel untouched"
-    exit 1
-  fi
+if "$CFD" --config "$CFG" tunnel ingress validate; then
+  echo "  ✓ config validates"
+else
+  cp "$BACKUP" "$CFG"
+  echo "  ✗ config did NOT validate — rolled back, tunnel untouched"
+  exit 1
 fi
 
-PID="$(pgrep -f 'cloudflared.*tunnel.*run' | head -1)"
+PID="$(pgrep -f 'cloudflared.*tunnel' | head -1)"
 if [ -n "$PID" ]; then
   kill -HUP "$PID"
   echo "  ✓ reloaded cloudflared (pid $PID) — trading dashboard not interrupted"
 else
-  echo "  ! cloudflared is not running; start it and the new rule takes effect"
+  echo "  ! cloudflared is not running. Start it the way the desk does:"
+  echo "      cd ~/repo/trading-helper && scripts/restart_cloudflare.sh"
 fi
+
+# That file is tracked in the trading-helper repo, so the edit shows up as a
+# dirty tree there and a later `git pull --ff-only` on that repo will refuse.
+case "$CFG" in
+  */trading-helper/*)
+    echo ""
+    echo "  ! The ingress file lives in the trading-helper repo, so commit it there"
+    echo "    or the next trading deploy will refuse to pull:"
+    echo "      cd ~/repo/trading-helper && git add config/cloudflared-config.yml \\"
+    echo "        && git commit -m 'tunnel: route retirement.jbrasfield.com' && git push"
+    ;;
+esac
 REMOTE
 fi
 
