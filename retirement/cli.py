@@ -229,6 +229,59 @@ def cmd_omi(args) -> int:
     return 0
 
 
+def cmd_tunnel(args) -> int:
+    """Is the tunnel up, which one, and what did it last say."""
+    import subprocess
+    from retirement.core.config import project_root
+
+    root = project_root()
+    cfg = root / "config" / "cloudflared-config.yml"
+    if not cfg.exists():
+        print(f"✗ no {cfg}")
+        print("  This machine has not had the tunnel set up: scripts/tunnel_setup.sh")
+        return 1
+
+    tunnel_id = ""
+    hostname = ""
+    for line in cfg.read_text(encoding="utf-8").splitlines():
+        if line.startswith("tunnel:"):
+            tunnel_id = line.split(":", 1)[1].strip()
+        if "hostname:" in line:
+            hostname = hostname or line.split("hostname:", 1)[1].strip()
+    print(f"tunnel   {tunnel_id}")
+    print(f"host     {hostname}")
+
+    procs = subprocess.run(["pgrep", "-fl", f"cloudflared.*{tunnel_id}"],
+                           capture_output=True, text=True).stdout.strip().splitlines()
+    if not procs:
+        print("state    ✗ NOT running — Cloudflare will serve error 1033")
+    elif len(procs) > 1:
+        print(f"state    ✗ {len(procs)} processes serving ONE tunnel:")
+        for line in procs:
+            print(f"           {line}")
+        print("         The edge keeps only the newest, so these evict each other in")
+        print("         a loop. Stop all but one.")
+    else:
+        print(f"state    ✓ running — {procs[0]}")
+
+    # And anything else cloudflared, so a second tunnel is visible too.
+    everything = subprocess.run(["pgrep", "-fl", "cloudflared"],
+                                capture_output=True, text=True).stdout.strip().splitlines()
+    others = [p for p in everything if tunnel_id not in p]
+    if others:
+        print("other    cloudflared processes on this machine (fine — different tunnels):")
+        for line in others:
+            print(f"           {line[:110]}")
+
+    log = root / "logs" / "tunnel.log"
+    if log.exists():
+        print(f"\nlast lines of {log}:")
+        tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-12:]
+        for line in tail:
+            print(f"  {line[:160]}")
+    return 0
+
+
 def cmd_ai_test(args) -> int:
     """One trivial prompt through the chosen backend, with the exact command
     and the raw error if it fails. `doctor` says a CLI is installed; this says
@@ -375,6 +428,9 @@ def main(argv: list[str] | None = None) -> int:
     p_omi = sub.add_parser("omi", help="import official OMI market values, or show what is loaded")
     p_omi.add_argument("file", nargs="?", default="", help="path to a ..._VALORI_....csv")
     p_omi.set_defaults(func=cmd_omi)
+
+    p_tunnel = sub.add_parser("tunnel", help="tunnel id, process state and recent log")
+    p_tunnel.set_defaults(func=cmd_tunnel)
 
     p_ai = sub.add_parser("ai-test", help="send one prompt to the AI backend and show the result")
     p_ai.add_argument("--provider", default="", help="agy | claude_cli | grok | anthropic_api")

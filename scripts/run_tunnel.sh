@@ -41,6 +41,22 @@ if [ ! -f "$CFG" ]; then
   exit 1
 fi
 
-log "starting $CFD with $CFG"
-log "tunnel: $(grep '^tunnel:' "$CFG" | awk '{print $2}')"
+TUNNEL_ID="$(grep '^tunnel:' "$CFG" | awk '{print $2}')"
+
+# Two processes serving ONE tunnel id is not a second copy for redundancy: the
+# Cloudflare edge evicts the older one, closing every connection at once with
+# "Application error 0x0 (remote)" followed by "no more connections active and
+# exiting". That is an eviction, not a crash, and it reads like neither.
+OTHERS="$(pgrep -fl "cloudflared.*$TUNNEL_ID" 2>/dev/null | grep -v "^$$ " || true)"
+if [ -n "$OTHERS" ]; then
+  log "WARNING: something else is already serving tunnel $TUNNEL_ID:"
+  printf '%s\n' "$OTHERS" | while IFS= read -r line; do log "  $line"; done
+  log "  The edge keeps only the newest connection, so these two will evict"
+  log "  each other in a loop. Stop one of them."
+fi
+
+log "starting $CFD"
+log "  config $CFG"
+log "  tunnel $TUNNEL_ID"
+log "  url    ${HOSTNAME_PUBLIC:-retirement.jbrasfield.com}"
 exec "$CFD" --config "$CFG" --no-autoupdate tunnel run
