@@ -211,6 +211,53 @@ def cmd_omi(args) -> int:
     return 0
 
 
+def cmd_probe(args) -> int:
+    """Make one real call to a source and write the raw response out.
+
+    For a source whose response shape is not published, this is the difference
+    between correcting a field mapping in one round trip and guessing at it."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    from retirement.core.config import load_yaml, project_root
+    from retirement.modules.property.sources.rapidapi import RapidApiSource, find_elements
+
+    if args.source != "rapidapi":
+        print(f"no probe for '{args.source}'")
+        return 1
+
+    config = load_yaml("config/property.yaml")
+    source = RapidApiSource(db.connect(), config)
+    if not source.available():
+        print("✗ no rapidapi_key in config/secrets.json (or RAPIDAPI_KEY in .env)")
+        return 1
+
+    area = (config.get("areas") or [{}])[0]
+    print(f"calling {source._host()} for area '{area.get('id', '?')}'")
+    try:
+        payload = source.request(area)
+    except Exception as exc:
+        print(f"✗ request failed: {exc}")
+        return 1
+
+    out = project_root() / "var" / "rapidapi-probe.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(_json.dumps(payload, indent=2, ensure_ascii=False)[:2_000_000],
+                   encoding="utf-8")
+    print(f"✓ wrote {out}")
+
+    if isinstance(payload, dict):
+        print(f"  top-level keys: {', '.join(sorted(payload)[:14])}")
+    try:
+        elements = find_elements(payload)
+        print(f"  found {len(elements)} listings")
+        if elements:
+            print(f"  first listing's fields: {', '.join(sorted(elements[0])[:20])}")
+    except Exception as exc:
+        print(f"  ! {exc}")
+    return 0
+
+
 def cmd_serve(args) -> int:
     import uvicorn
 
@@ -255,6 +302,10 @@ def main(argv: list[str] | None = None) -> int:
     p_omi = sub.add_parser("omi", help="import official OMI market values, or show what is loaded")
     p_omi.add_argument("file", nargs="?", default="", help="path to a ..._VALORI_....csv")
     p_omi.set_defaults(func=cmd_omi)
+
+    p_probe = sub.add_parser("probe", help="call a source once and dump the raw response")
+    p_probe.add_argument("source", nargs="?", default="rapidapi")
+    p_probe.set_defaults(func=cmd_probe)
 
     p_email = sub.add_parser("email-test", help="send one real message to prove the path")
     p_email.add_argument("--to", default="", help="override the configured recipient")

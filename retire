@@ -153,6 +153,7 @@ PYEOF
   doctor) need_venv; "$PY" -m retirement.cli doctor ;;
   email-test) need_venv; shift || true; "$PY" -m retirement.cli email-test "$@" ;;
   omi) need_venv; shift || true; "$PY" -m retirement.cli omi "$@" ;;
+  probe) need_venv; shift || true; "$PY" -m retirement.cli probe "$@" ;;
   list) need_venv; "$PY" -m retirement.cli list ;;
   *)    sed -n '2,8p' "$0"; exit 2 ;;
 esac

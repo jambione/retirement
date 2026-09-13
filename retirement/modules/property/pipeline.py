@@ -9,7 +9,9 @@ from retirement.core.module import Module, register
 from retirement.modules.property import digest, omi, score, store
 from retirement.modules.property.models import Listing
 from retirement.modules.property.sources.idealista import IdealistaSource, QuotaExceeded
+from retirement.modules.property.sources.alerts import AlertsSource
 from retirement.modules.property.sources.manual import ManualSource
+from retirement.modules.property.sources.rapidapi import RapidApiSource
 
 log = logging.getLogger("retirement.property")
 
@@ -73,6 +75,19 @@ class PropertyModule(Module):
             summary["warnings"].append(
                 "idealista credentials missing -- running on manual listings only"
             )
+
+        rapid = RapidApiSource(self.conn, self.config)
+        if rapid.available():
+            sources.append(rapid)
+        # Alerts fill the manual queue, so they must run BEFORE it is read.
+        alerts = AlertsSource(self.conn, self.config)
+        if alerts.available():
+            collected = alerts.collect()
+            summary["alerts"] = collected
+            if collected.get("error"):
+                summary["warnings"].append(f"alerts mailbox: {collected['error']}")
+            for subject in collected.get("no_links", [])[:3]:
+                summary["warnings"].append(f"no listing links in: {subject}")
         sources.append(ManualSource(self.conn, self.config))
 
         listings: list[Listing] = []

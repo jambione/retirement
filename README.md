@@ -31,7 +31,9 @@ What this project uses instead:
 | Source | Status | Notes |
 |---|---|---|
 | **Idealista Search API** | official, needs a key | The one major Italian portal with a real developer API. Small free allowance. [Request access](https://developers.idealista.com/access-request) |
-| **Manual URLs** | works now, no key | Paste anything you find anywhere. It gets fetched, parsed, scored and ranked alongside the API results. |
+| **Saved-search alerts** | works now, no key | The portals email you new matches; the listing URLs are pulled out and scored automatically. Their own mechanism — no approval, no scraping. |
+| **Manual URLs** | works now, no key | Paste anything you find anywhere. It gets fetched, parsed, scored and ranked alongside everything else. |
+| **RapidAPI (unofficial)** | works now, self-service key | A third-party wrapper around idealista. Listings today, but it scrapes the portal and breaks when the portal changes. |
 
 The design consequence: the pipeline is source-agnostic. Adding a portal later
 means writing one `fetch()` method in `retirement/modules/property/sources/` —
@@ -187,6 +189,34 @@ One file means one place to rotate a password. It also means this app can read
 every secret the trading desk holds — which is why a separate file is the
 default. `./retire doctor` prints what is configured, without printing any of
 it.
+
+## Alert emails as a feed
+
+Set a saved search on each portal for each area, point the alerts at the
+mailbox in `config/secrets.json`, and flip `alerts.enabled` in
+`config/property.yaml`. Every cycle pulls the listing URLs out of whatever
+arrived and queues them for scoring.
+
+Two details that decide whether this works: portals wrap links in
+click-tracking redirects, so the real URL is read out of the query string as
+well as the body; and a message is only marked read once a URL has been taken
+from it, so a format change shows up as unread mail rather than being silently
+consumed. Anything that yields no links is reported in the run summary.
+
+## RapidAPI (unofficial)
+
+`rapidapi_key` in `config/secrets.json` switches it on. **Its response shape is
+not verified** — RapidAPI does not publish one without a key, and shipping a
+guessed JSON mapping is how you get a source that returns nothing and blames
+the network. The normaliser reads defensively across the spellings these
+wrappers use, and when it recognises nothing it says which keys it *did* get
+and points here:
+
+```bash
+./retire probe rapidapi     # one real call, raw response written to var/
+```
+
+One round trip and the mapping can be made exact.
 
 ## Official market values (OMI)
 

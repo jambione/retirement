@@ -71,3 +71,13 @@ digest:
   max_listings: 12
   include_near_misses: true
   only_send_if_new: true         # do not email an unchanged shortlist
+
+# Saved-search alert emails as a feed. Set searches up on each portal, point
+# them at a mailbox, and new matches are queued and scored automatically. The
+# portals' own mechanism -- no API key, no approval, no scraping.
+alerts:
+  enabled: false          # true once imap_* is in config/secrets.json
+  folder: INBOX
+  from_contains: [idealista, immobiliare, casa.it, gate-away]
+  area_id: alerts         # which bucket these land in for benchmarking
+  mark_seen: true
