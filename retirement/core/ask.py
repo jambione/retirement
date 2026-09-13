@@ -24,12 +24,15 @@ import os
 import shutil
 import subprocess
 import tempfile
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from retirement.core.config import env, project_root
+
+log = logging.getLogger("retirement.ask")
 
 DEFAULT_TIMEOUT = 180.0
 
@@ -120,8 +123,27 @@ def _text_from(raw: str) -> str:
     return raw
 
 
+def describe(cmd: list[str]) -> str:
+    """The command as run, with the prompt elided — prompts are long and the
+    argv is the part that explains a flag error."""
+    shown = []
+    skip_next = False
+    for i, part in enumerate(cmd):
+        if skip_next:
+            shown.append("<prompt>")
+            skip_next = False
+            continue
+        if part == "-p":
+            shown.append(part)
+            skip_next = True
+            continue
+        shown.append(part)
+    return " ".join(shown)
+
+
 def _run(cmd: list[str], timeout: float, env_overrides: dict[str, str] | None = None) -> str:
     process_env = {**os.environ, **(env_overrides or {})}
+    log.debug("running %s", describe(cmd))
     try:
         proc = subprocess.run(
             cmd, capture_output=True, text=True,
@@ -134,12 +156,17 @@ def _run(cmd: list[str], timeout: float, env_overrides: dict[str, str] | None = 
 
     out, err = (proc.stdout or "").strip(), (proc.stderr or "").strip()
     if proc.returncode != 0 and not out:
-        raise RuntimeError(f"{cmd[0]} exit {proc.returncode}: {(err or 'no output')[:300]}")
+        raise RuntimeError(
+            f"exit {proc.returncode} from: {describe(cmd)}\n"
+            f"{(err or 'no output on stderr')[:400]}"
+        )
     # agy needs its envelope intact (see _unwrap_agy); everything else is
     # happy with the generic extraction.
     text = out if "agy" in os.path.basename(cmd[0]) else _text_from(out)
     if not text:
-        raise RuntimeError(f"{cmd[0]} returned nothing ({err[:200] or 'no stderr'})")
+        raise RuntimeError(
+            f"no output from: {describe(cmd)}\n{(err or 'no stderr either')[:400]}"
+        )
     return text
 
 
@@ -168,18 +195,21 @@ AGY_LOGGED_OUT = (
 
 def _agy_cli(prompt: str, timeout: float) -> str:
     binary = resolve_binary(env("ASK_AGY_BIN", "agy") or "agy")
-    raw = _run(
-        [binary, "-p", prompt,
-         "--output-format", "json",
-         # Without this agy applies its own, shorter print timeout and returns
-         # a truncated answer on a long assessment.
-         "--print-timeout", f"{int(max(30.0, timeout))}s",
-         "--disable-slash-commands",
-         "--model", env("ASK_AGY_MODEL", "gemini-3.7-flash-high") or "gemini-3.7-flash-high",
-         "--effort", env("ASK_AGY_EFFORT", "high") or "high"],
-        timeout,
-    )
-    return _unwrap_agy(raw)
+    cmd = [
+        binary, "-p", prompt,
+        "--output-format", "json",
+        # Without this agy applies its own, shorter print timeout and returns a
+        # truncated answer on a long assessment.
+        "--print-timeout", f"{int(max(30.0, timeout))}s",
+        "--disable-slash-commands",
+        "--model", env("ASK_AGY_MODEL", "gemini-3.7-flash-high") or "gemini-3.7-flash-high",
+    ]
+    # Only when asked for. trading-helper passes --effort conditionally, and a
+    # flag this build does not recognise fails the whole call.
+    effort = env("ASK_AGY_EFFORT")
+    if effort:
+        cmd += ["--effort", effort]
+    return _unwrap_agy(_run(cmd, timeout))
 
 
 def _unwrap_agy(raw: str) -> str:

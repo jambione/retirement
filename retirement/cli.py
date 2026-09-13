@@ -212,6 +212,40 @@ def cmd_omi(args) -> int:
     return 0
 
 
+def cmd_ai_test(args) -> int:
+    """One trivial prompt through the chosen backend, with the exact command
+    and the raw error if it fails. `doctor` says a CLI is installed; this says
+    whether it answers."""
+    from retirement.core import ask
+
+    provider = args.provider or ask.default_provider()
+    if not provider:
+        print("✗ no AI backend available. `./retire doctor` shows where it looked.")
+        return 1
+
+    entry = next((e for e in ask.available() if e["id"] == provider), None)
+    print(f"backend  {provider}" + (f"  ({entry.get('path')})" if entry and entry.get("path") else ""))
+    note = ask.preference_note()
+    if note:
+        print(f"         ! {note}")
+
+    try:
+        result = ask.ask("Reply with exactly: OK", provider=provider, timeout=90)
+    except Exception as exc:
+        print("✗ the call failed:\n")
+        for line in str(exc).splitlines():
+            print(f"    {line}")
+        print("\n  If it mentions authentication, run `agy` with no arguments from a")
+        print("  Terminal ON the mini — the login lives in that user's Keychain and an")
+        print("  ssh session cannot reach it.")
+        print("  If it mentions an unrecognised flag, comment out ASK_AGY_EFFORT in .env")
+        print("  or set ASK_AGY_MODEL to one `agy models` lists.")
+        return 1
+
+    print(f"✓ answered in {result['seconds']}s: {result['answer'][:200]}")
+    return 0
+
+
 def cmd_probe(args) -> int:
     """Make one real call to a source and write the raw response out.
 
@@ -310,6 +344,10 @@ def main(argv: list[str] | None = None) -> int:
     p_omi = sub.add_parser("omi", help="import official OMI market values, or show what is loaded")
     p_omi.add_argument("file", nargs="?", default="", help="path to a ..._VALORI_....csv")
     p_omi.set_defaults(func=cmd_omi)
+
+    p_ai = sub.add_parser("ai-test", help="send one prompt to the AI backend and show the result")
+    p_ai.add_argument("--provider", default="", help="agy | claude_cli | grok | anthropic_api")
+    p_ai.set_defaults(func=cmd_ai_test)
 
     p_probe = sub.add_parser("probe", help="call a source once and dump the raw response")
     p_probe.add_argument("source", nargs="?", default="rapidapi")

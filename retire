@@ -7,6 +7,7 @@
 #   ./retire cycle [--dry-run]     every enabled module
 #   ./retire doctor                what is configured (no secrets printed)
 #   ./retire email-test            send one real message to prove it works
+#   ./retire ai-test               send one prompt to the AI backend, show the error
 #   ./retire omi [file]            import official OMI market values / show status
 #   ./retire list                  current shortlist in the terminal
 set -uo pipefail
@@ -154,6 +155,7 @@ PYEOF
   email-test) need_venv; shift || true; "$PY" -m retirement.cli email-test "$@" ;;
   omi) need_venv; shift || true; "$PY" -m retirement.cli omi "$@" ;;
   probe) need_venv; shift || true; "$PY" -m retirement.cli probe "$@" ;;
+  ai-test) need_venv; shift || true; "$PY" -m retirement.cli ai-test "$@" ;;
   list) need_venv; "$PY" -m retirement.cli list ;;
   *)    sed -n '2,8p' "$0"; exit 2 ;;
 esac

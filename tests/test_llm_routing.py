@@ -234,3 +234,43 @@ def test_available_reports_where_each_backend_was_found(monkeypatch):
     assert entries["agy"]["path"] == "/opt/homebrew/bin/agy"
     assert entries["claude_cli"]["ready"] is False
     assert entries["claude_cli"]["path"] is None
+
+
+# ── failures have to name themselves ───────────────────────────────────────
+def test_the_command_is_shown_without_the_prompt():
+    shown = ask.describe(["/opt/homebrew/bin/agy", "-p", "a very long prompt " * 50,
+                          "--model", "gemini-3.7-flash-high"])
+    assert shown == "/opt/homebrew/bin/agy -p <prompt> --model gemini-3.7-flash-high"
+
+
+def test_a_failing_call_reports_the_command_and_the_stderr(monkeypatch, tmp_path):
+    script = tmp_path / "agy"
+    script.write_text("#!/bin/sh\necho 'unknown flag: --effort' >&2\nexit 2\n")
+    script.chmod(0o755)
+    monkeypatch.setattr(ask, "resolve_binary", lambda _n: str(script))
+    monkeypatch.setenv("ASK_AGY_EFFORT", "high")
+
+    with pytest.raises(RuntimeError) as err:
+        ask._agy_cli("hello", 60.0)
+    text = str(err.value)
+    assert "exit 2" in text
+    assert "--effort" in text          # the flag it choked on
+    assert "<prompt>" in text          # argv shown, prompt elided
+    assert "hello" not in text         # ...and not leaked into the error
+
+
+def test_effort_is_only_passed_when_it_is_configured(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ask, "resolve_binary", lambda _n: "/x/agy")
+    monkeypatch.setattr(ask, "_run",
+                        lambda cmd, timeout, env_overrides=None:
+                        captured.setdefault("cmd", cmd) or '{"status":"SUCCESS","response":"ok"}')
+
+    monkeypatch.delenv("ASK_AGY_EFFORT", raising=False)
+    ask._agy_cli("p", 60.0)
+    assert "--effort" not in captured["cmd"]
+
+    captured.clear()
+    monkeypatch.setenv("ASK_AGY_EFFORT", "high")
+    ask._agy_cli("p", 60.0)
+    assert captured["cmd"][captured["cmd"].index("--effort") + 1] == "high"
