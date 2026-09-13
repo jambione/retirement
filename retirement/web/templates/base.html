@@ -80,6 +80,12 @@ button:hover,.btn:hover{border-color:#3C3532;color:var(--ink)}
 button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
 button.primary:hover{background:#F0A968;color:var(--accent-ink)}
 button.tiny{padding:6px 13px;font-size:12px}
+/* The native file button renders light-on-light in a dark page. */
+input[type=file]{padding:0;border:none;background:none;color:var(--muted);font-size:13px}
+input[type=file]::file-selector-button{font:inherit;font-size:13px;margin-right:12px;
+  padding:9px 15px;border-radius:var(--r-sm);border:1px solid var(--line-2);
+  background:transparent;color:var(--ink-2);cursor:pointer}
+input[type=file]::file-selector-button:hover{border-color:var(--accent);color:var(--accent)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
 
@@ -162,7 +168,7 @@ button.tiny{padding:6px 13px;font-size:12px}
     <nav class="nav">
       <a href="/" class="{% if active == 'property' %}on{% endif %}">Property</a>
       <a href="/board" class="{% if active == 'board' %}on{% endif %}">Board</a>
-      <span class="soon">Finance</span>
+      <a href="/finance" class="{% if active == 'finance' %}on{% endif %}">Finance</a>
       <span class="soon">Healthcare</span>
       <span class="soon">Residency</span>
     </nav>

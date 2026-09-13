@@ -16,6 +16,8 @@ modules:
   board:
     enabled: true
     config: config/board.yaml
-  # finance:   { enabled: false }   # drawdown / tax modelling
+  finance:
+    enabled: true
+    config: config/finance.yaml
   # healthcare:{ enabled: false }   # coverage comparison by country
   # residency: { enabled: false }   # visa + residency pathway tracking

@@ -3,10 +3,18 @@
 A planning project for the two of us. Modular on purpose — property is the
 first workstream, not the only one.
 
-**Module 1: property.** Pull Italian listings, filter them against what we
-actually want, score them for value, and email a ranked shortlist. Built to
-answer one question before next spring: *which towns are worth a week of our
-time, and what does the money buy there?*
+Three modules so far:
+
+| Module | What it does |
+|---|---|
+| **property** | Pulls Italian listings, filters them against what we actually want, scores them for value, and emails a ranked shortlist. |
+| **board** | Four columns, one card shape. What is done, what is next, and one written line saying what is blocking what. |
+| **finance** | Net worth from the eMoney export: dated snapshots, the assets/liabilities split, and what the house would take out of it. |
+
+And **Ask B** — the round B beside any section opens a panel that says, in
+plain words and then verbatim, exactly what an AI is about to read, and runs
+your prompt against it using the claude, grok or agy CLI already on the
+machine.
 
 ---
 
@@ -60,6 +68,7 @@ says so in the run summary rather than failing.
 | `./retire list` | Current shortlist in the terminal |
 | `retirement add <url>` | Queue a listing found elsewhere |
 | `retirement digest --preview` | Render the email to `var/` without sending |
+| `./retire scan board` / `finance` | Run another module's cycle |
 
 ## How scoring works
 
@@ -86,10 +95,59 @@ want to see, not a thing to silently drop.
 Scores are **relative to each area's current stock**, so a 90 means good value
 *for that area*. They are not comparable to a 90 in a different market.
 
+## Ask B
+
+Every section header carries a round **B**. It opens a drawer that first tells
+you what that section's data actually contains, then — if you want to check —
+shows the exact text that will be sent, before anything is sent. Then you pick
+a backend and ask.
+
+Backends are whichever of these exist on the machine, in this order:
+
+| Backend | How it authenticates |
+|---|---|
+| `claude_cli` | `claude -p`, the subscription login |
+| `grok` | the Grok CLI, SuperGrok login |
+| `agy` | `agy -p`, Gemini subscription |
+| `anthropic_api` | `ANTHROPIC_API_KEY`, billed per call |
+
+All three CLIs are agentic coding tools pointed at a working directory, so each
+is invoked here with its file and shell tools explicitly disallowed and its cwd
+set to `var/ask/` — "summarise this shortlist" must never turn into a commit.
+
+If a CLI reports itself logged out, that is the ssh-Keychain problem the
+trading desk has too: restart the service through the LaunchAgent
+(`launchctl kickstart -k gui/$(id -u)/com.jambi.retirement-web`) rather than
+logging in again.
+
+## Net worth
+
+**eMoney has no client-side API.** It is licensed to advisory *firms* and
+authenticated with an X.509 certificate the firm registers — there is no
+individual tier, so a key would have to come from your advisor's firm. This
+module therefore reads the balance-sheet / net-worth **export** from the client
+portal: CSV, TSV or XLSX, drag it in and it parses.
+
+The parser is tolerant rather than exact — it finds the header row by looking
+for the columns it knows, ignores the export's own total rows in favour of
+adding up the accounts itself, treats debt as debt whichever sign the export
+uses, and reports anything it had to guess in `warnings` on the page. Every
+import is a new dated snapshot, so the trend survives a bad export and a bad
+import can be deleted without taking the history.
+
+Balances stay in the local SQLite file. They leave the machine only when you
+ask B a question with the finance scope selected, and the panel shows you
+exactly what goes.
+
 ## Configuration
 
 `config/profile.yaml` — household-level, shared by every module, and where
 future modules get switched on.
+
+`config/board.yaml` — columns, tags, the trip date the board counts down to.
+
+`config/finance.yaml` — currency, how account names map to buckets, which words
+mean debt, and the purchase figure the "what the house would take" panel uses.
 
 `config/property.yaml` — everything about the search: the plain-English
 `prompt`, budget, search areas, scoring weights, hard filters, digest settings.
@@ -121,11 +179,13 @@ rule to the tunnel you already run, route the DNS name to that same tunnel, and
 
 ```
 retirement/
-  core/          config, sqlite, email, the optional Claude layer, Module base
+  core/          config · sqlite · email · llm · ask (the B backends) · context · Module base
   modules/
-    property/    sources/ · models · normalise · score · store · digest · pipeline
-  web/           FastAPI UI
-config/          profile.yaml · property.yaml
+    property/    sources/ · models · score · store · digest · pipeline
+    board/       store · summary · pipeline
+    finance/     importer · store · pipeline
+  web/           FastAPI UI — base · property · board · finance templates
+config/          profile.yaml · property.yaml · board.yaml · finance.yaml
 scripts/         deploy_mini.sh · LaunchAgents · cloudflare_setup.md
 ```
 
@@ -134,5 +194,5 @@ scripts/         deploy_mini.sh · LaunchAgents · cloudflare_setup.md
 Subclass `Module`, implement `migrate()` and `run()`, decorate with
 `@register("name")`, import it in `core/module.py:load_registry`, and add it to
 `config/profile.yaml`. It inherits the CLI, the database, the scheduler and the
-email path. Candidates already sketched in `profile.yaml`: drawdown and tax
-modelling, healthcare coverage comparison, residency pathway tracking.
+email path. `board` and `finance` are the worked examples. Still sketched in
+`profile.yaml`: healthcare coverage comparison and residency pathway tracking.

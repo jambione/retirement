@@ -188,8 +188,60 @@ def board(conn: sqlite3.Connection, config: dict[str, Any], **_: Any):
     }
 
 
+def finance(conn: sqlite3.Connection, config: dict[str, Any], **_: Any):
+    from retirement.modules.finance import store
+
+    snapshot = store.latest(conn)
+    if snapshot is None:
+        return {"title": "Net worth", "explains": "No export has been imported yet.",
+                "context": "", "rows": 0, "suggestions": []}
+    prior = store.previous(conn, snapshot["id"])
+    lines = [
+        f"NET WORTH AS OF {snapshot['as_of']} (imported from {snapshot['source']}):",
+        f"Assets {_euro(snapshot['assets']).replace('€', snapshot['currency'] + ' ')}"
+        f" · Liabilities {snapshot['liabilities']:,.0f}"
+        f" · Net worth {snapshot['net_worth']:,.0f} {snapshot['currency']}",
+    ]
+    if prior:
+        lines.append(
+            f"Previous snapshot {prior['as_of']}: net worth {prior['net_worth']:,.0f} "
+            f"({snapshot['net_worth'] - prior['net_worth']:+,.0f})"
+        )
+    lines.append("\nACCOUNTS:")
+    for account in snapshot["accounts"]:
+        kind = "liability" if account["is_liability"] else account["category"]
+        lines.append(
+            f"- {account['name']}"
+            + (f" ({account['institution']})" if account["institution"] else "")
+            + f" · {kind} · {account['balance']:,.0f}"
+        )
+    purchase = config.get("purchase") or {}
+    if purchase.get("budget_eur"):
+        lines.append(
+            f"\nThe Italian purchase we are planning: €{purchase['budget_eur']:,.0f} "
+            f"plus about {purchase.get('closing_cost_pct', 10)}% closing costs, "
+            f"at roughly {purchase.get('eur_usd', 1)} USD per EUR."
+        )
+    return {
+        "title": "Net worth",
+        "explains": (
+            f"The {snapshot['as_of']} snapshot: every account and balance from the export, "
+            "the assets/liabilities split, and the previous snapshot for comparison. "
+            "These are real balances — they go to whichever model you pick below."
+        ),
+        "context": "\n".join(lines),
+        "rows": len(snapshot["accounts"]),
+        "suggestions": [
+            "What does buying this house at this price actually do to the balance sheet?",
+            "Which accounts would the purchase sensibly come out of, and in what order?",
+            "What has moved most since the previous snapshot?",
+        ],
+    }
+
+
 SCOPES = {
     "brief": brief,
+    "finance": finance,
     "shortlist": shortlist,
     "listing": listing,
     "board": board,

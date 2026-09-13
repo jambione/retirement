@@ -1,0 +1,36 @@
+# Net worth, fed by the balance-sheet export from the eMoney client portal.
+#
+# Why an export and not the API: eMoney's API is licensed to advisory FIRMS and
+# authenticated with an X.509 certificate the firm registers. There is no
+# individual-client tier, so as a client you cannot get a key -- your advisor's
+# firm would have to sponsor one. The export is the same numbers, a manual
+# refresh instead of a live feed.
+
+currency: USD
+
+# Anything whose category or account name matches one of these is treated as a
+# liability, whatever sign the export gives it. Case-insensitive substrings.
+liability_hints:
+  - mortgage
+  - loan
+  - credit card
+  - heloc
+  - line of credit
+  - liability
+  - debt
+
+# Accounts are bucketed for the breakdown. First match wins; anything unmatched
+# lands in "other".
+categories:
+  retirement:  [401k, 403b, ira, roth, pension, sep, simple]
+  investments: [brokerage, taxable, trust, investment, mutual fund, etf]
+  cash:        [checking, savings, money market, cd, cash]
+  property:    [residence, real estate, home, property]
+  liabilities: [mortgage, loan, credit card, heloc, debt]
+
+# What the Italy purchase would take out of it. Used for the "after the house"
+# line, not for advice -- the number is arithmetic, not a recommendation.
+purchase:
+  budget_eur: 350000
+  eur_usd: 1.08          # refresh this when it matters; it is a rough marker
+  closing_cost_pct: 10

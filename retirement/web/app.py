@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import threading
 from datetime import date, datetime
+from urllib.parse import quote
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, Form, Request
+from fastapi import BackgroundTasks, FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -32,6 +33,7 @@ _last_run: dict[str, Any] = {}
 
 PROPERTY_CONFIG = "config/property.yaml"
 BOARD_CONFIG = "config/board.yaml"
+FINANCE_CONFIG = "config/finance.yaml"
 
 # Steps almost every Italian purchase goes through, offered from the board's
 # empty state rather than seeded -- a board you did not write is a board you
@@ -55,6 +57,10 @@ def _property_config() -> dict[str, Any]:
 
 def _board_config() -> dict[str, Any]:
     return load_yaml(BOARD_CONFIG)
+
+
+def _finance_config() -> dict[str, Any]:
+    return load_yaml(FINANCE_CONFIG)
 
 
 def _chrome() -> dict[str, Any]:
@@ -254,12 +260,73 @@ def board_starter():
     return RedirectResponse("/board", status_code=303)
 
 
+# ── finance ────────────────────────────────────────────────────────────────
+@app.get("/finance", response_class=HTMLResponse)
+def finance(request: Request):
+    from retirement.modules.finance import store
+
+    conn = db.connect()
+    store.migrate(conn)
+    config = _finance_config()
+    snapshot = store.latest(conn)
+    prior = store.previous(conn, snapshot["id"]) if snapshot else None
+    purchase = config.get("purchase") or {}
+    cost_usd = (
+        float(purchase.get("budget_eur", 0)) * float(purchase.get("eur_usd", 1))
+        * (1 + float(purchase.get("closing_cost_pct", 0)) / 100)
+    ) if purchase.get("budget_eur") else None
+
+    return templates.TemplateResponse(
+        request,
+        "finance.html",
+        {
+            "active": "finance",
+            "config": config,
+            "snapshot": snapshot,
+            "prior": prior,
+            "history": store.history(conn),
+            "categories": store.by_category(snapshot) if snapshot else [],
+            "purchase_cost_usd": cost_usd,
+            "import_error": request.query_params.get("error", ""),
+            **_chrome(),
+        },
+    )
+
+
+@app.post("/finance/import")
+async def finance_import(file: UploadFile = File(...)):
+    from retirement.modules.finance import importer, store
+
+    conn = db.connect()
+    store.migrate(conn)
+    data = await file.read()
+    try:
+        parsed = importer.parse(data, file.filename or "export.csv", _finance_config())
+    except importer.ImportError_ as exc:
+        return RedirectResponse(f"/finance?error={quote(str(exc))}", status_code=303)
+    except Exception as exc:
+        return RedirectResponse(f"/finance?error={quote(f'Could not read that file: {exc}')}",
+                                status_code=303)
+    store.save_snapshot(conn, parsed)
+    return RedirectResponse("/finance", status_code=303)
+
+
+@app.post("/finance/delete")
+def finance_delete(snapshot_id: int = Form(...)):
+    from retirement.modules.finance import store
+
+    store.delete_snapshot(db.connect(), snapshot_id)
+    return RedirectResponse("/finance", status_code=303)
+
+
 # ── ask B ──────────────────────────────────────────────────────────────────
 # One question, one section's data, whichever AI is installed. The context is
 # fetched separately from the answer so the panel can show what B is about to
 # read BEFORE anything is sent anywhere.
 def _context_config(scope: str) -> dict[str, Any]:
-    return _board_config() if scope == "board" else _property_config()
+    return {"board": _board_config, "finance": _finance_config}.get(
+        scope, _property_config
+    )()
 
 
 @app.get("/ask/context")

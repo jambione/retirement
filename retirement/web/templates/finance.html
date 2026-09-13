@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Net worth — Retirement{% endblock %}
+
+{% block style %}
+.hero{display:flex;align-items:flex-end;justify-content:space-between;gap:28px;flex-wrap:wrap}
+.big{font-family:var(--mono);font-size:52px;line-height:1;color:#F5F1EA;letter-spacing:-.02em}
+.delta{font-size:13.5px;margin-top:8px;color:var(--muted)}
+.split{display:flex;height:8px;border-radius:5px;overflow:hidden;margin:20px 0 10px;background:var(--line-2)}
+.split i{display:block;height:8px}
+.split-key{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted)}
+.two{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start;margin-top:14px}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+.catrow{display:grid;grid-template-columns:110px minmax(0,1fr) 96px;gap:12px;align-items:center;
+  font-size:13px;color:var(--ink-2);margin-bottom:12px}
+.catrow .amt{font-family:var(--mono);font-size:12.5px;text-align:right;color:var(--ink)}
+table.accts{width:100%;border-collapse:collapse;font-size:13px}
+table.accts th{text-align:left;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);font-weight:400;padding:0 0 10px;border-bottom:1px solid var(--line)}
+table.accts td{padding:10px 0;border-bottom:1px solid #221E1D;color:var(--ink-2)}
+table.accts td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
+table.accts tr:last-child td{border-bottom:none}
+.liab td{color:var(--muted)}
+.drop{border:1px dashed var(--line-2);border-radius:var(--r);padding:22px;text-align:center}
+.drop input[type=file]{width:auto;border:none;background:none;padding:0;font-size:13px;color:var(--muted)}
+{% endblock %}
+
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+  <div class="eyebrow">Retirement · finance</div>
+  <button type="button" class="askb" data-scope="finance"
+          title="Ask B about the balance sheet" aria-label="Ask B about the balance sheet">B</button>
+</div>
+
+{% if import_error %}
+  <div class="card" style="border-color:#4A3A22;margin-bottom:14px">
+    <span class="pill warn">import failed</span>
+    <p style="margin:10px 0 0;font-size:13.5px;color:var(--ink-2);line-height:1.55">{{ import_error }}</p>
+  </div>
+{% endif %}
+
+{% if not snapshot %}
+  <h1 class="serif" style="font-size:30px;margin:6px 0 10px">Net worth</h1>
+  <div class="card">
+    <p style="margin:0 0 18px;font-size:14.5px;color:var(--ink-2);line-height:1.6;max-width:640px">
+      Export the balance sheet or net-worth report from the eMoney client portal and drop the
+      file here. It reads the accounts, splits assets from liabilities, and keeps each import
+      as a dated snapshot so the trend builds up over time.
+    </p>
+    <form method="post" action="/finance/import" enctype="multipart/form-data" class="drop">
+      <input type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm" required>
+      <div style="margin-top:14px"><button type="submit" class="primary">Import the export</button></div>
+    </form>
+    <p class="foot" style="margin-top:18px">
+      Why an export rather than a live feed: eMoney's API is licensed to advisory <i>firms</i> and
+      authenticated with a certificate the firm registers — there is no individual-client tier, so
+      the key would have to come from your advisor. The numbers stay in the local database on
+      this machine; nothing is sent anywhere unless you ask B a question.
+    </p>
+  </div>
+{% else %}
+
+<div class="card">
+  <div class="hero">
+    <div>
+      <div class="eyebrow">Net worth · as of {{ snapshot.as_of }}</div>
+      <div class="big" style="margin-top:10px">
+        {{ snapshot.currency }} {{ '{:,.0f}'.format(snapshot.net_worth) }}
+      </div>
+      {% if prior %}
+        {% set change = snapshot.net_worth - prior.net_worth %}
+        <div class="delta">
+          <span style="color: {% if change >= 0 %}var(--good){% else %}var(--warn){% endif %}">
+            {{ '{:+,.0f}'.format(change) }}
+          </span>
+          since {{ prior.as_of }}
+        </div>
+      {% else %}
+        <div class="delta">First snapshot — the trend starts with the next import.</div>
+      {% endif %}
+    </div>
+
+    {% if history|length > 1 %}
+      {% set values = history|map(attribute='net_worth')|list %}
+      {% set lo = values|min %}{% set hi = values|max %}
+      {% set span = (hi - lo) if (hi - lo) > 0 else 1 %}
+      <svg width="340" height="86" viewBox="0 0 340 86" preserveAspectRatio="none" aria-label="Net worth trend">
+        <polyline fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"
+          points="{% for v in values %}{{ loop.index0 * (336 / (values|length - 1)) + 2 }},{{ 76 - ((v - lo) / span) * 64 }} {% endfor %}"/>
+        <circle cx="338" cy="{{ 76 - ((values[-1] - lo) / span) * 64 }}" r="3" fill="var(--accent)"/>
+      </svg>
+    {% endif %}
+  </div>
+
+  {% set total = snapshot.assets if snapshot.assets > 0 else 1 %}
+  <div class="split">
+    <i style="width: {{ (100 * (snapshot.assets - snapshot.liabilities) / total)|round(1) }}%;background:var(--accent)"></i>
+    <i style="width: {{ (100 * snapshot.liabilities / total)|round(1) }}%;background:#6E655C"></i>
+  </div>
+  <div class="split-key">
+    <span>Assets <span class="mono" style="color:var(--ink)">{{ '{:,.0f}'.format(snapshot.assets) }}</span></span>
+    <span>Liabilities <span class="mono" style="color:var(--ink)">{{ '{:,.0f}'.format(snapshot.liabilities) }}</span></span>
+  </div>
+
+  {% for warning in snapshot.warnings %}
+    <div style="margin-top:12px"><span class="pill warn">{{ warning }}</span></div>
+  {% endfor %}
+</div>
+
+<div class="two">
+  <div class="card">
+    <div class="eyebrow" style="margin-bottom:18px">Where it sits</div>
+    {% for bucket in categories %}
+      <div class="catrow">
+        <span>{{ bucket.category }}</span>
+        <div class="meter {% if not loop.first %}plain{% endif %}">
+          <i style="width: {{ (bucket.share * 100)|round(1) }}%"></i>
+        </div>
+        <span class="amt">{{ '{:,.0f}'.format(bucket.amount) }}</span>
+      </div>
+    {% endfor %}
+    {% if not categories %}<p class="empty">No asset accounts in this snapshot.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <div class="eyebrow" style="margin-bottom:16px">What the house would take</div>
+    {% if purchase_cost_usd %}
+      {% set after = snapshot.net_worth - purchase_cost_usd %}
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">
+        <span style="font-size:13px;color:var(--ink-2)">
+          €{{ '{:,.0f}'.format(config.purchase.budget_eur) }} + {{ config.purchase.closing_cost_pct }}% costs
+        </span>
+        <span class="mono" style="font-size:15px;color:var(--warn)">−{{ '{:,.0f}'.format(purchase_cost_usd) }}</span>
+      </div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;
+                  padding-top:12px;border-top:1px solid var(--line)">
+        <span style="font-size:13px;color:var(--ink-2)">Net worth after</span>
+        <span class="mono" style="font-size:20px;color:#F3EEE7">{{ '{:,.0f}'.format(after) }}</span>
+      </div>
+      <p class="foot" style="margin-top:16px">
+        Arithmetic, not advice: purchase price at {{ config.purchase.eur_usd }} USD per EUR plus
+        {{ config.purchase.closing_cost_pct }}% for the notary, agency and registration tax. It
+        says nothing about which accounts the money comes out of or what that costs in tax —
+        that is a conversation with your advisor, and a good thing to ask B to frame first.
+      </p>
+    {% else %}
+      <p class="empty">Set a budget in <span class="mono">config/finance.yaml</span> to see this.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px">
+    <span class="eyebrow">Accounts in this snapshot</span>
+    <span style="font-size:11.5px;color:var(--dim)">from {{ snapshot.source }}</span>
+  </div>
+  <table class="accts">
+    <thead><tr><th>Account</th><th>Where</th><th>Bucket</th><th style="text-align:right">Balance</th></tr></thead>
+    <tbody>
+      {% for account in snapshot.accounts %}
+        <tr class="{% if account.is_liability %}liab{% endif %}">
+          <td>{{ account.name }}</td>
+          <td style="color:var(--muted)">{{ account.institution }}</td>
+          <td style="color:var(--faint)">{{ account.category }}</td>
+          <td class="n">{% if account.is_liability %}−{% endif %}{{ '{:,.0f}'.format(account.balance) }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap">
+  <form method="post" action="/finance/import" enctype="multipart/form-data"
+        style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0">
+    <input type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm" required
+           style="width:auto;border:none;background:none;padding:0;font-size:13px;color:var(--muted)">
+    <button type="submit">Import a newer export</button>
+  </form>
+  <form method="post" action="/finance/delete" style="margin:0"
+        onsubmit="return confirm('Delete this snapshot? The earlier ones stay.')">
+    <input type="hidden" name="snapshot_id" value="{{ snapshot.id }}">
+    <button class="tiny" type="submit">Delete this snapshot</button>
+  </form>
+</div>
+
+<p class="foot">
+  {{ history|length }} snapshot{{ '' if history|length == 1 else 's' }} on file. Balances live in
+  the SQLite database on this machine and are never sent anywhere on their own — the B panel
+  shows you the exact text before anything goes to a model.
+</p>
+{% endif %}
+{% endblock %}
