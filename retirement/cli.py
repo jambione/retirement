@@ -229,7 +229,14 @@ def cmd_probe(args) -> int:
     config = load_yaml("config/property.yaml")
     source = RapidApiSource(db.connect(), config)
     if not source.available():
-        print("✗ no rapidapi_key in config/secrets.json (or RAPIDAPI_KEY in .env)")
+        print("✗ no rapidapi_key set.")
+        print("  1. rapidapi.com — sign up (free)")
+        print("  2. subscribe to the 'Idealista' API by apidojo, Basic/free plan")
+        print("  3. copy the X-RapidAPI-Key from its dashboard, then either:")
+        print('       config/secrets.json:  "rapidapi_key": "..."')
+        print("       .env:                 RAPIDAPI_KEY=...")
+        print("  4. rerun this. It makes ONE read-only call and writes the raw")
+        print("     response to var/, which is what the field mapping needs.")
         return 1
 
     area = (config.get("areas") or [{}])[0]
