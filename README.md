@@ -130,6 +130,11 @@ All three CLIs are agentic coding tools pointed at a working directory, so each
 is invoked here with its file and shell tools explicitly disallowed and its cwd
 set to `var/ask/` — "summarise this shortlist" must never turn into a commit.
 
+**On login shells:** `zsh -lc` reads `.zshenv`, `.zprofile` and `.zlogin` but
+**not** `.zshrc`, which is where most PATH edits actually live. So no login
+shell is a reliable way to find a binary from a launchd job. Pinned absolute
+paths are, which is why the deploy writes them.
+
 If a backend shows as *not found* while it works fine from your Terminal, that
 is PATH, not installation: npm, bun and Homebrew put these binaries where an
 ssh or launchd shell never looks. The deploy resolves each one through a login

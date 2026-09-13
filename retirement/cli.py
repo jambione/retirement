@@ -81,6 +81,23 @@ def cmd_doctor(args) -> int:
         "NO backend — listings score on numeric signals only, board summary is deterministic"
     ))
 
+    import subprocess
+    from retirement.core.config import project_root
+
+    cfg = project_root() / "config" / "cloudflared-config.yml"
+    if cfg.exists():
+        tunnel_id = ""
+        for line in cfg.read_text(encoding="utf-8").splitlines():
+            if line.startswith("tunnel:"):
+                tunnel_id = line.split(":", 1)[1].strip()
+        running = subprocess.run(["pgrep", "-f", "cloudflared.*retirement"],
+                                 capture_output=True, text=True).stdout.strip()
+        print(f"tunnel     {'✓ running' if running else '✗ NOT running'}  {tunnel_id}")
+        if not running:
+            print("           logs/tunnel.log says why; Cloudflare shows 1033 while it is down")
+    else:
+        print("tunnel     not set up here (scripts/tunnel_setup.sh)")
+
     for name in Profile.load().enabled_modules():
         print(f"module     {name}")
     return 0

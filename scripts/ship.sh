@@ -264,9 +264,14 @@ if ! ssh_mini "curl -sf --max-time 5 http://127.0.0.1:$PORT/healthz >/dev/null";
   no "the app is not answering on the mini — last lines of logs/web.log:"
   ssh_mini "tail -15 '$MINI_REPO/logs/web.log' 2>/dev/null | sed 's/^/      /'" || true
 fi
-curl -sI --max-time 8 "https://$HOSTNAME_PUBLIC/healthz" >/dev/null 2>&1 \
-  && ok "https://$HOSTNAME_PUBLIC answers" \
-  || no "https://$HOSTNAME_PUBLIC not answering yet (DNS can take a minute)"
+if curl -sI --max-time 8 "https://$HOSTNAME_PUBLIC/healthz" >/dev/null 2>&1; then
+  ok "https://$HOSTNAME_PUBLIC answers"
+else
+  no "https://$HOSTNAME_PUBLIC not answering — last lines of logs/tunnel.log:"
+  ssh_mini "tail -12 '$MINI_REPO/logs/tunnel.log' 2>/dev/null | sed 's/^/      /'" || true
+  echo "      (Cloudflare 1033 means no cloudflared is connected for the tunnel;"
+  echo "       502 means it is connected but the app behind it is down.)"
+fi
 curl -sI --max-time 8 "https://trading.jbrasfield.com" >/dev/null 2>&1 \
   && ok "trading.jbrasfield.com still fine" \
   || no "trading.jbrasfield.com not answering — check the tunnel"
