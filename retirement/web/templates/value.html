@@ -26,6 +26,11 @@
 .comp .src{grid-column:1/-1;font-size:11.5px;color:var(--dim)}
 /* The refusal. It gets more room than the score would have, because "we
    cannot say" is only useful if it also says what would change that. */
+.refline{margin:10px 0 0;font-size:12.5px;color:var(--muted)}
+.refline b{font-family:var(--mono);font-size:13.5px;color:var(--teal);letter-spacing:.04em}
+.lookup{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+.lookup .hint{display:block;margin-top:7px;font-size:12px;color:var(--dim)}
+.reftag{font-family:var(--mono);font-size:12px;color:var(--teal)}
 .withheld{border:1px solid var(--line-2);border-left:2px solid var(--warn);
   border-radius:var(--r-sm);padding:16px 18px;background:var(--surface-2)}
 .withheld h3{font-family:var(--display);font-weight:600;font-size:17px;letter-spacing:-.01em}
@@ -128,6 +133,16 @@ table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
       <span class="grow"></span>
       <button class="primary" id="v-go">Score it</button>
     </div>
+
+    <div class="lookup">
+      <label for="v-ref">Or look one up — cerca per riferimento</label>
+      <div class="row" style="margin-top:0">
+        <input id="v-ref" placeholder="CIS1001" style="flex-grow:1;text-transform:uppercase">
+        <button class="tiny" id="v-find">Find</button>
+      </div>
+      <span class="hint">A reference, a portal's own code, or part of a listing URL.</span>
+    </div>
+
     <div id="v-out"></div>
   </div>
 
@@ -135,11 +150,12 @@ table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
     <span class="eyebrow">Scored listings — immobili valutati</span>
     {% if scored %}
       <table class="vals" style="margin-top:14px">
-        <thead><tr><th>Property</th><th style="text-align:right">€</th>
+        <thead><tr><th>Ref</th><th>Property</th><th style="text-align:right">€</th>
           <th style="text-align:right">€/m²</th><th style="text-align:right">Score</th></tr></thead>
         <tbody>
         {% for row in scored %}
           <tr>
+            <td class="reftag">{{ row.ref or "—" }}</td>
             <td>
               {% if row.url %}<a href="{{ row.url }}" target="_blank" rel="noopener">{{ row.title or row.listing_id }}</a>
               {% else %}{{ row.title or row.listing_id }}{% endif %}
@@ -152,7 +168,8 @@ table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
             </td>
             <td class="n">{{ "{:,.0f}".format(row.price) if row.price else "—" }}</td>
             <td class="n">{{ "{:,.0f}".format(row.price / row.size_sqm) if row.price and row.size_sqm else "—" }}</td>
-            <td class="n" style="color:var(--accent)">{{ "%.1f"|format(row.score) if row.score is not none else "—" }}</td>
+            <td class="n" style="color:var(--accent)"
+                title="{{ row.breakdown.why_not or '' }}">{{ "%.1f"|format(row.score) if row.score is not none else "not valued" }}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -224,6 +241,10 @@ table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
               '<span style="font-size:12.5px;color:var(--dim)">confidence ' +
               Math.round(data.confidence * 100) + '% · risk −' + data.risk_penalty + '</span></div>';
     }
+    if (data.ref) {
+      html += '<p class="refline">Reference <b>' + data.ref + '</b>' +
+              ' — quote it to find this again, here or on the phone.</p>';
+    }
     if (data.comune && data.comune.name) {
       html += '<p style="font-size:12.5px;color:var(--dim);margin:8px 0 0">' +
               data.comune.name + (data.comune.prov ? ' (' + data.comune.prov + ')' : '') +
@@ -272,6 +293,26 @@ table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
       .then(render)
       .catch(function () { out.innerHTML = '<div class="result ask-err">The request failed.</div>'; })
       .then(function () { button.disabled = false; });
+  });
+
+  function lookup() {
+    var raw = (document.getElementById('v-ref').value || '').trim();
+    if (!raw) return;
+    out.innerHTML = '<div class="result" style="color:var(--muted);font-size:13px">Looking up ' +
+                    raw.toUpperCase() + '<span class="dots"></span></div>';
+    fetch('/api/value/ref/' + encodeURIComponent(raw))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) { out.innerHTML = '<div class="result ask-err">' + data.error + '</div>'; return; }
+        var breakdown = data.breakdown || {};
+        breakdown.ref = data.ref;
+        render(breakdown);
+      })
+      .catch(function () { out.innerHTML = '<div class="result ask-err">The lookup failed.</div>'; });
+  }
+  document.getElementById('v-find').addEventListener('click', lookup);
+  document.getElementById('v-ref').addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') { event.preventDefault(); lookup(); }
   });
 
   document.getElementById('v-upload').addEventListener('submit', function (event) {

@@ -68,6 +68,9 @@ async def score_one(request: Request):
             province=str(payload.get("province", "")),
             weights=payload.get("weights"),
             fetch_amenities=bool(payload.get("fetch_amenities")),
+            # Scored means kept: without a stored row there is nothing for a
+            # reference to point at.
+            persist=payload.get("persist", True),
         )
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
@@ -157,6 +160,20 @@ def one_listing(listing_id: str, rescore: bool = False):
                  else scoring.score_listing(conn, Listing(**_listing_fields(listing))))
     return JSONResponse({"listing": listing, "value": breakdown,
                          "attribution": ATTRIBUTION})
+
+
+@router.get("/ref/{reference}")
+def by_reference(reference: str):
+    """Look a property up by its reference — CIS1001 — or by the portal's own
+    code, the listing id, or a fragment of its URL."""
+    found = store.by_ref(_conn(), reference)
+    if found is None:
+        return JSONResponse(
+            {"error": f"Nothing on record for {reference!r}. References look like "
+                      "CIS1001: three letters of the comune, then a number."},
+            status_code=404,
+        )
+    return JSONResponse({**found, "attribution": ATTRIBUTION})
 
 
 @router.get("/zones")

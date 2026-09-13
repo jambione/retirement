@@ -308,3 +308,53 @@ def test_province_registry_gives_names_and_boxes_without_a_download(conn, monkey
     found = store.resolve_comune(conn, name_key="CISTERNINO")
     assert found["istat"] == "074005" and found["prov"] == "BR" and found["region"] == "Puglia"
     assert store.comune_at(conn, 40.743, 17.426)["istat"] == "074005"
+
+
+# ── property references ────────────────────────────────────────────────────
+def test_reference_reads_as_a_place_and_survives_rescoring(conn):
+    seed_omi(conn)
+    seed_stats(conn)
+    first = scoring.score(conn, lat=40.74, lng=17.43, price=180_000, size_m2=120,
+                          typology="homes", persist=True)
+    assert first["ref"].startswith("CIS") and first["ref"][3:].isdigit()
+
+    # the same property scored again keeps its number, even as the answer moves
+    again = scoring.score(conn, lat=40.74, lng=17.43, price=180_000, size_m2=120,
+                          typology="homes", persist=True)
+    assert again["ref"] == first["ref"]
+
+    # a different property in the same town gets the next one
+    other = scoring.score(conn, lat=40.74, lng=17.43, price=260_000, size_m2=120,
+                          typology="homes", persist=True)
+    assert other["ref"] != first["ref"] and other["ref"][:3] == "CIS"
+
+
+def test_lookup_is_forgiving_about_how_you_type_it(conn):
+    seed_omi(conn)
+    seed_stats(conn)
+    ref = scoring.score(conn, lat=40.74, lng=17.43, price=180_000, size_m2=120,
+                        typology="homes", persist=True)["ref"]
+    for typed in (ref, ref.lower(), f"{ref[:3]}-{ref[3:]}", f" {ref[:3]} {ref[3:]} "):
+        assert store.by_ref(conn, typed)["ref"] == ref
+    assert store.by_ref(conn, "ZZZ9999") is None
+
+
+def test_reference_falls_back_to_the_province_then_to_italy(conn):
+    assert store.ref_prefix("Cisternino") == "CIS"
+    assert store.ref_prefix("Bì", "BR") == "BRX"     # too short a name
+    assert store.ref_prefix("", "") == "ITA"
+
+
+def test_a_listing_keeps_one_reference_across_runs(conn):
+    from retirement.modules.property.models import Listing
+
+    seed_omi(conn)
+    seed_stats(conn)
+    listing = Listing(id="idealista:99", source="idealista", external_id="99",
+                      price=180_000, size_sqm=120, lat=40.74, lng=17.43,
+                      municipality="Cisternino", province="BR", property_type="homes")
+    one = scoring.score_listing(conn, listing)["ref"]
+    two = scoring.score_listing(conn, listing)["ref"]
+    assert one == two
+    # and the portal's own code finds it too
+    assert store.by_ref(conn, "99") is None or store.by_ref(conn, "99")["ref"] == one

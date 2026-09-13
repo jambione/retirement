@@ -12,6 +12,7 @@ from.
 """
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from typing import Any
 
@@ -51,7 +52,7 @@ def score(conn: sqlite3.Connection, *, lat: float | None = None, lng: float | No
           typology: str = "", condition: str = "", asking_rent_month: float | None = None,
           municipality: str = "", istat: str = "", province: str = "",
           weights: dict[str, float] | None = None,
-          fetch_amenities: bool = False) -> dict[str, Any]:
+          fetch_amenities: bool = False, persist: bool = False) -> dict[str, Any]:
     """The whole breakdown for one property.
 
     `fetch_amenities=False` means OpenStreetMap is read from cache only — a
@@ -100,6 +101,18 @@ def score(conn: sqlite3.Connection, *, lat: float | None = None, lng: float | No
         "omi_band": band,
         "sources": sorted({c.source for c in parts + [risk] if c.source}),
     })
+    if persist:
+        # Keyed on the inputs, so scoring the same house twice reuses the row
+        # and therefore the same reference -- the number you wrote down keeps
+        # finding the thing you wrote it down for.
+        fingerprint = hashlib.sha1(
+            "|".join(str(v) for v in (round(lat or 0, 5), round(lng or 0, 5), price,
+                                      size_m2, typology, condition)).encode()
+        ).hexdigest()[:10]
+        result["ref"] = store.save_score(
+            conn, f"adhoc:{fingerprint}", result,
+            comune=result["comune"]["name"], province=province,
+        )
     return result
 
 
@@ -121,5 +134,9 @@ def score_listing(conn: sqlite3.Connection, listing: Any,
     listing_id = getattr(listing, "id", "")
     if listing_id:
         result["listing_id"] = listing_id
-        store.save_score(conn, listing_id, result)
+        result["ref"] = store.save_score(
+            conn, listing_id, result,
+            comune=result["comune"]["name"] or getattr(listing, "municipality", ""),
+            province=result["comune"]["prov"] or getattr(listing, "province", ""),
+        )
     return result

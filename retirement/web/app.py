@@ -417,16 +417,26 @@ def value_page(request: Request):
 
     conn = db.connect()
     value_store.migrate(conn)
+    # LEFT JOIN, not JOIN: a property scored from the box on this page has no
+    # listing row, and it is still a thing you looked at and gave a number to.
     rows = conn.execute(
-        """SELECT v.listing_id, v.score, v.breakdown, l.title, l.url, l.price,
-                  l.size_sqm, l.municipality, l.province
-           FROM value_scores v JOIN listings l ON l.id = v.listing_id
-           WHERE l.active = 1 ORDER BY v.score DESC LIMIT 100"""
+        """SELECT v.listing_id, v.score, v.ref, v.scored_at, v.breakdown,
+                  l.title, l.url, l.price, l.size_sqm, l.municipality, l.province
+           FROM value_scores v LEFT JOIN listings l ON l.id = v.listing_id
+           WHERE l.id IS NULL OR l.active = 1
+           ORDER BY v.scored_at DESC LIMIT 100"""
     ).fetchall()
     scored = []
     for row in rows:
         item = dict(row)
         item["breakdown"] = json.loads(item["breakdown"]) if item["breakdown"] else {}
+        shown = item["breakdown"].get("input") or {}
+        comune = (item["breakdown"].get("comune") or {})
+        item["title"] = item["title"] or comune.get("name") or "Scored from the box"
+        item["price"] = item["price"] or shown.get("price")
+        item["size_sqm"] = item["size_sqm"] or shown.get("size_m2")
+        item["municipality"] = item["municipality"] or comune.get("name", "")
+        item["province"] = item["province"] or comune.get("prov", "")
         scored.append(item)
     return templates.TemplateResponse(
         request,

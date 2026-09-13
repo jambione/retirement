@@ -112,7 +112,8 @@ CREATE TABLE IF NOT EXISTS value_scores (
     listing_id TEXT PRIMARY KEY,
     scored_at  TEXT NOT NULL,
     score      REAL,
-    breakdown  TEXT NOT NULL
+    breakdown  TEXT NOT NULL,
+    ref        TEXT                  -- CIS1001: three letters of the comune, then a run
 );
 
 CREATE TABLE IF NOT EXISTS geocode_cache (
@@ -147,6 +148,15 @@ CREATE TABLE IF NOT EXISTS value_imports (
 
 def migrate(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    # CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so
+    # a column added after the first release needs its own idempotent step.
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(value_scores)")}
+    if "ref" not in columns:
+        conn.execute("ALTER TABLE value_scores ADD COLUMN ref TEXT")
+    # After the column exists in both cases, never inside SCHEMA: a database
+    # made before `ref` would hit the index first and fail the whole script.
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_value_ref "
+                 "ON value_scores(ref) WHERE ref IS NOT NULL")
     conn.commit()
 
 
@@ -179,13 +189,106 @@ def put_stats(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
     return len(payload)
 
 
-def save_score(conn: sqlite3.Connection, listing_id: str, breakdown: dict[str, Any]) -> None:
-    conn.execute(
-        """INSERT OR REPLACE INTO value_scores (listing_id, scored_at, score, breakdown)
-           VALUES (?,?,?,?)""",
-        (listing_id, utcnow(), breakdown.get("score"), json.dumps(breakdown)),
-    )
-    conn.commit()
+def ref_prefix(comune: str = "", province: str = "") -> str:
+    """CIS for Cisternino, LOC for Locorotondo — the way an Italian agency
+    writes a reference, so it reads as a place and not as a hash."""
+    import re
+    import unicodedata
+
+    text = unicodedata.normalize("NFKD", comune or "")
+    letters = "".join(c for c in text if c.isalpha() and not unicodedata.combining(c)).upper()
+    letters = re.sub(r"[^A-Z]", "", letters)
+    if len(letters) >= 3:
+        return letters[:3]
+    province = re.sub(r"[^A-Za-z]", "", province or "").upper()
+    if len(province) >= 2:
+        return (province + "X")[:3]
+    return "ITA"
+
+
+def mint_ref(conn: sqlite3.Connection, comune: str = "", province: str = "") -> str:
+    """The next reference for this town. Numbers run from 1001 per prefix, so
+    a reference is short enough to read down the phone and specific enough that
+    two towns never collide."""
+    prefix = ref_prefix(comune, province)
+    row = conn.execute(
+        "SELECT MAX(CAST(SUBSTR(ref, ?) AS INTEGER)) AS n FROM value_scores "
+        "WHERE ref LIKE ? || '%'",
+        (len(prefix) + 1, prefix),
+    ).fetchone()
+    nxt = int((row["n"] or 1000)) + 1
+    return f"{prefix}{nxt}"
+
+
+def normalise_ref(raw: str) -> str:
+    """Accept 'cis 1001', 'CIS-1001', ' CIS1001 ' as the same reference."""
+    import re
+
+    return re.sub(r"[^A-Z0-9]", "", (raw or "").upper())
+
+
+def by_ref(conn: sqlite3.Connection, raw: str) -> dict[str, Any] | None:
+    """A reference, a listing id, a portal's own code, or a URL — all four are
+    things a person might paste into a box labelled 'look this up'."""
+    needle = normalise_ref(raw)
+    if not needle:
+        return None
+    row = conn.execute("SELECT * FROM value_scores WHERE ref = ?", (needle,)).fetchone()
+    if row is None:
+        row = conn.execute(
+            "SELECT * FROM value_scores WHERE UPPER(REPLACE(listing_id, ':', '')) = ?",
+            (needle,),
+        ).fetchone()
+    if row is None:
+        try:
+            hit = conn.execute(
+                """SELECT id FROM listings
+                   WHERE UPPER(external_id) = ? OR UPPER(REPLACE(id, ':', '')) = ?
+                      OR UPPER(url) LIKE '%' || ? || '%' LIMIT 1""",
+                (needle, needle, needle),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            hit = None
+        if hit:
+            row = conn.execute("SELECT * FROM value_scores WHERE listing_id = ?",
+                               (hit["id"],)).fetchone()
+    if row is None:
+        return None
+    item = dict(row)
+    item["breakdown"] = json.loads(item["breakdown"]) if item["breakdown"] else {}
+    try:
+        listing = conn.execute("SELECT * FROM listings WHERE id = ?",
+                               (item["listing_id"],)).fetchone()
+        item["listing"] = dict(listing) if listing else None
+    except sqlite3.OperationalError:
+        item["listing"] = None
+    return item
+
+
+def save_score(conn: sqlite3.Connection, listing_id: str, breakdown: dict[str, Any],
+               comune: str = "", province: str = "") -> str:
+    """Stores the breakdown and returns the property's reference.
+
+    A reference is minted once and then kept: re-scoring a property after new
+    data lands must not renumber it, or the number you wrote down stops
+    finding it."""
+    existing = conn.execute(
+        "SELECT ref FROM value_scores WHERE listing_id = ?", (listing_id,)
+    ).fetchone()
+    ref = (existing["ref"] if existing and existing["ref"]
+           else mint_ref(conn, comune, province))
+    for _ in range(5):                       # a race on MAX() retries, it does not fail
+        try:
+            conn.execute(
+                """INSERT OR REPLACE INTO value_scores
+                     (listing_id, scored_at, score, breakdown, ref) VALUES (?,?,?,?,?)""",
+                (listing_id, utcnow(), breakdown.get("score"), json.dumps(breakdown), ref),
+            )
+            conn.commit()
+            return ref
+        except sqlite3.IntegrityError:
+            ref = mint_ref(conn, comune, province)
+    raise RuntimeError("could not mint a unique reference")
 
 
 # ── reads ──────────────────────────────────────────────────────────────────

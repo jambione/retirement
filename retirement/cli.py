@@ -467,6 +467,28 @@ def cmd_value(args) -> int:
         print("    sources: " + ", ".join(result["sources"]))
         return 0
 
+    if action == "ref":
+        found = store.by_ref(conn, args.reference)
+        if found is None:
+            print(f"Nothing on record for {args.reference!r}.")
+            print("  References look like CIS1001 — three letters of the comune, then a number.")
+            return 1
+        breakdown = found["breakdown"]
+        listing = found.get("listing") or {}
+        shown = breakdown.get("input", {})
+        print(f"{found['ref']}  scored {found['scored_at'][:16].replace('T', ' ')}")
+        print(f"  {listing.get('title') or breakdown.get('comune', {}).get('name', '')}"
+              f"  {listing.get('url', '')}".rstrip())
+        if shown.get("price"):
+            print(f"  €{shown['price']:,.0f}"
+                  + (f" · {shown['size_m2']:.0f} m²" if shown.get("size_m2") else ""))
+        if breakdown.get("score") is None:
+            print(f"  not valued — {breakdown.get('why_not', '')}")
+        else:
+            print(f"  {breakdown['score']:.1f}/100 ({breakdown['band']}), "
+                  f"confidence {breakdown['confidence'] * 100:.0f}%")
+        return 0
+
     if action == "coverage":
         data = store.coverage(conn)
         print(f"OMI semester   {data['semester'] or '(nothing imported)'}")
@@ -635,6 +657,10 @@ def main(argv: list[str] | None = None) -> int:
     v_score.add_argument("--osm", action="store_true", help="call Overpass (cached 30 days)")
     v_score.add_argument("--json", action="store_true")
     v_score.set_defaults(func=cmd_value)
+
+    v_ref = value_sub.add_parser("ref", help="look a property up by its reference")
+    v_ref.add_argument("reference", help="e.g. CIS1001, or a portal code or URL")
+    v_ref.set_defaults(func=cmd_value)
 
     v_cov = value_sub.add_parser("coverage", help="what data is actually loaded")
     v_cov.set_defaults(func=cmd_value)
