@@ -58,7 +58,12 @@ ok "ssh to $MINI_SSH"
 NEEDS_CLONE=0; NEEDS_SETUP=0; NEEDS_AGENTS=0
 ssh_mini "test -d '$MINI_REPO/.git'" 2>/dev/null || NEEDS_CLONE=1
 if [ "$NEEDS_CLONE" = 0 ]; then
-  ssh_mini "test -x '$MINI_REPO/.venv/bin/python'" 2>/dev/null || NEEDS_SETUP=1
+  # A venv left behind by a FAILED install still has a working python binary in
+  # it, so testing for the binary answered yes and setup was skipped -- leaving
+  # the service unable to start and the tunnel serving 502s. Ask the only
+  # question that matters: can that interpreter import what we need?
+  ssh_mini "'$MINI_REPO/.venv/bin/python' -c 'import retirement, fastapi, uvicorn'" \
+    2>/dev/null || NEEDS_SETUP=1
 fi
 ssh_mini "launchctl print gui/\$(id -u)/com.jambi.retirement-web >/dev/null 2>&1 && \
           launchctl print gui/\$(id -u)/com.jambi.retirement-tunnel >/dev/null 2>&1" \
@@ -117,7 +122,12 @@ fi
 # one thing that is still missing rather than everything again.
 if [ "$NEEDS_SETUP" = 1 ]; then
   say "Virtualenv"
-  ssh_mini "cd '$MINI_REPO' && ./retire setup"
+  # Start clean: a half-installed venv built against the wrong interpreter
+  # cannot be repaired by installing into it again.
+  ssh_mini "cd '$MINI_REPO' && rm -rf .venv && ./retire setup" || {
+    no "setup failed — the service cannot start until this is fixed"
+    exit 1
+  }
   ok "dependencies installed"
 fi
 
@@ -193,6 +203,12 @@ REMOTE
 say "Health"
 ssh_mini "cd '$MINI_REPO' && ./retire status" || true
 sleep 3
+# When the origin is down the tunnel serves 502s and the useful evidence is in
+# the service log, not in this script's output.
+if ! ssh_mini "curl -sf --max-time 5 http://127.0.0.1:$PORT/healthz >/dev/null"; then
+  no "the app is not answering on the mini — last lines of logs/web.log:"
+  ssh_mini "tail -15 '$MINI_REPO/logs/web.log' 2>/dev/null | sed 's/^/      /'" || true
+fi
 curl -sI --max-time 8 "https://$HOSTNAME_PUBLIC/healthz" >/dev/null 2>&1 \
   && ok "https://$HOSTNAME_PUBLIC answers" \
   || no "https://$HOSTNAME_PUBLIC not answering yet (DNS can take a minute)"

@@ -100,10 +100,16 @@ case "${1:-status}" in
     ;;
 
   stop)
+    # KeepAlive means launchd restarts it within seconds. Say so rather than
+    # letting "stopped" be quietly untrue.
+    if pgrep -f "[.]venv/bin/uvicorn retirement[.]web" >/dev/null 2>&1 && ! is_running; then
+      echo "! this is the LaunchAgent's process; launchd will restart it."
+      echo "  To stop it properly:  launchctl bootout gui/\$(id -u)/com.jambi.retirement-web"
+    fi
     if is_running; then
       kill "$(cat "$PIDFILE")" && rm -f "$PIDFILE" && echo "✓ stopped"
     else
-      pkill -f "uvicorn retirement.web.app" 2>/dev/null && echo "✓ stopped (by pattern)" || echo "not running"
+      pkill -f "[.]venv/bin/uvicorn retirement[.]web" 2>/dev/null && echo "✓ stopped (by pattern)" || echo "not running"
       rm -f "$PIDFILE"
     fi
     ;;
@@ -111,8 +117,18 @@ case "${1:-status}" in
   restart) "$0" stop; sleep 1; "$0" start ;;
 
   status)
-    if is_running; then echo "✓ web  running (pid $(cat "$PIDFILE")) on :$PORT"
-    else echo "✗ web  not running"; fi
+    # Under launchd there is no pidfile -- the LaunchAgent execs uvicorn itself,
+    # which is why this used to report "not running" for a perfectly healthy
+    # service. Ask the process table too.
+    LAUNCHD_PID="$(pgrep -f "[.]venv/bin/uvicorn retirement[.]web" | head -1)"
+    if is_running; then
+      echo "✓ web  running (pid $(cat "$PIDFILE"), started by ./retire) on :$PORT"
+    elif [ -n "$LAUNCHD_PID" ]; then
+      echo "✓ web  running (pid $LAUNCHD_PID, LaunchAgent) on :$PORT"
+    else
+      echo "✗ web  not running"
+      [ -f "$LOG" ] && echo "  last log line: $(tail -1 "$LOG")"
+    fi
     curl -s --max-time 3 "http://127.0.0.1:$PORT/healthz" >/dev/null \
       && echo "✓ http healthz ok" || echo "✗ http not answering"
     if [ -x "$PY" ]; then
