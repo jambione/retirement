@@ -198,9 +198,11 @@
               <div style="font-size:12px;color:var(--muted);margin-top:3px">
                 {% if item.size_sqm %}{{ '%.0f'|format(item.size_sqm) }} m²{% endif %}
                 {%- if d.price_per_sqm %} · <span class="mono">€{{ '{:,.0f}'.format(d.price_per_sqm)|replace(',','.') }}</span>/m²{% endif %}
-                {%- if d.price_per_sqm and d.area_median_per_sqm %}
-                  {% set delta = (100 * (d.price_per_sqm / d.area_median_per_sqm - 1))|round|int %}
+                {%- if d.price_per_sqm and d.benchmark and d.benchmark.per_sqm %}
+                  {% set delta = (100 * (d.price_per_sqm / d.benchmark.per_sqm - 1))|round|int %}
                   <span style="color: {% if delta < 0 %}var(--good){% else %}var(--warn){% endif %}">{{ '%+d'|format(delta) }}%</span>
+                  <span style="color:var(--dim)" title="{% if d.benchmark.source == 'omi' %}Agenzia Entrate OMI, semester {{ d.benchmark.semester }}{% else %}median of what is listed in this area today{% endif %}">
+                    vs {% if d.benchmark.source == 'omi' %}OMI{% else %}area{% endif %}</span>
                 {% endif %}
               </div>
             </div>

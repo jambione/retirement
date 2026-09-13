@@ -176,6 +176,41 @@ def cmd_email_test(args) -> int:
     return 0
 
 
+def cmd_omi(args) -> int:
+    """Import an Agenzia delle Entrate OMI VALORI export."""
+    from pathlib import Path as _Path
+
+    from retirement.modules.property import omi
+
+    conn = db.connect()
+    if not args.file:
+        state = omi.status(conn)
+        if not state["imported"]:
+            print("No OMI data imported yet.")
+            print("  Download the current semester's VALORI file from")
+            print("  telematici.agenziaentrate.gov.it (free, one registration), then:")
+            print("    ./retire omi ~/Downloads/QI_..._VALORI_....csv")
+            return 1
+        for row in state["files"]:
+            print(f"{row['semester'] or '?':<8} {row['comuni']:>6,} comuni  "
+                  f"{row['rows']:>8,} rows  {row['filename']}")
+        return 0
+
+    path = _Path(args.file).expanduser()
+    if not path.exists():
+        print(f"✗ no such file: {path}")
+        return 1
+    try:
+        result = omi.import_file(conn, path.read_bytes(), path.name)
+    except ValueError as exc:
+        print(f"✗ {exc}")
+        return 1
+    print(f"✓ imported {result['rows']:,} residential rows across "
+          f"{result['comuni']:,} comuni (semester {result['semester'] or 'unknown'})")
+    print("  Source: Agenzia Entrate — OMI. Scoring now benchmarks against it.")
+    return 0
+
+
 def cmd_serve(args) -> int:
     import uvicorn
 
@@ -216,6 +251,10 @@ def main(argv: list[str] | None = None) -> int:
 
     p_doctor = sub.add_parser("doctor", help="what is configured on this machine")
     p_doctor.set_defaults(func=cmd_doctor)
+
+    p_omi = sub.add_parser("omi", help="import official OMI market values, or show what is loaded")
+    p_omi.add_argument("file", nargs="?", default="", help="path to a ..._VALORI_....csv")
+    p_omi.set_defaults(func=cmd_omi)
 
     p_email = sub.add_parser("email-test", help="send one real message to prove the path")
     p_email.add_argument("--to", default="", help="override the configured recipient")

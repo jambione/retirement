@@ -75,9 +75,13 @@ says so in the run summary rather than failing.
 "Best value" is not "cheapest". Each listing gets six 0–100 components, weighted
 by `config/property.yaml`:
 
-- **price vs area median** — price per m² against the stock currently listed in
-  that same search area. This is the core of it: a €280k house is good value in
-  Locorotondo and a bargain on Lake Garda, and one number cannot say both.
+- **price vs market** — price per m² against the **Agenzia delle Entrate's OMI
+  figures** for that comune when they have been imported, and against the stock
+  currently listed in the search area when they have not. The label after each
+  price says which. The stock is a small, self-selecting sample: if three
+  overpriced trulli are listed this week the fourth looks like a bargain, and
+  there is a test for exactly that. OMI is the recorded market value a notary
+  and a mortgage valuer work from.
 - **size per euro** — raw m² per euro, normalised across the run.
 - **airport access** — straight-line distance to the nearest international
   airport × 1.3 for roads. A ranking signal, not a routing answer.
@@ -183,6 +187,35 @@ One file means one place to rotate a password. It also means this app can read
 every secret the trading desk holds — which is why a separate file is the
 default. `./retire doctor` prints what is configured, without printing any of
 it.
+
+## Official market values (OMI)
+
+The Agenzia delle Entrate publishes *Quotazioni Immobiliari* — €/m² purchase
+bands for every micro-zone of every comune, revised twice a year. Importing
+them turns "cheap compared to its neighbours" into "cheap compared to what this
+zone is actually worth".
+
+It is free but needs one registration: the file is not published at a URL that
+can be fetched unattended. Download the current semester's **VALORI** export
+from `telematici.agenziaentrate.gov.it`, then:
+
+```bash
+./retire omi ~/Downloads/QI_..._VALORI_....csv   # import
+./retire omi                                     # what is loaded
+```
+
+Twice a year, when a new semester is published. Only residential types are kept
+— garages, warehouses and shops are in the same file and averaging them in
+would quietly drag every benchmark down. A comune's benchmark is the median of
+its zones, with the spread across them kept so you can see how much the zone
+matters.
+
+Attribution is required where the figures appear: *Agenzia Entrate — OMI*. The
+digest carries it.
+
+**What it is not:** a valuation of any specific house. A band for a type of
+property in a zone, which a house can legitimately sit outside. A listing far
+below the band is a question, not a bargain.
 
 ## Configuration
 

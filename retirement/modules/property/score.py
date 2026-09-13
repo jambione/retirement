@@ -58,15 +58,28 @@ def score_listing(
     hard: dict[str, Any],
     assessment: dict[str, Any] | None = None,
     size_per_euro_range: tuple[float, float] | None = None,
+    market: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     assessment = assessment or {}
     components: dict[str, float] = {}
 
-    # 1. Price against comparable local stock.
+    # 1. Price against the market. OMI's recorded value for the comune when we
+    # have it, the current listing stock when we do not -- the stock is a small
+    # and self-selecting sample, so it is the fallback rather than the default.
     pps = listing.price_per_sqm
     area_median = medians.get(listing.area_id)
-    if pps and area_median:
-        ratio = pps / area_median
+    benchmark: dict[str, Any] | None = None
+    if market and market.get("per_sqm"):
+        benchmark = {
+            "source": "omi", "per_sqm": market["per_sqm"],
+            "low": market.get("low"), "high": market.get("high"),
+            "semester": market.get("semester"), "zones": market.get("zones"),
+        }
+    elif area_median:
+        benchmark = {"source": "listings", "per_sqm": round(area_median)}
+
+    if pps and benchmark:
+        ratio = pps / benchmark["per_sqm"]
         components["price_vs_area_median"] = _lerp_score(ratio, best=0.60, worst=1.40)
     else:
         components["price_vs_area_median"] = 50.0
@@ -119,6 +132,7 @@ def score_listing(
         ),
         "price_per_sqm": round(pps) if pps else None,
         "area_median_per_sqm": round(area_median) if area_median else None,
+        "benchmark": benchmark,
         "note": assessment.get("note", ""),
         "concerns": assessment.get("concerns", []),
     }

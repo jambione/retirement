@@ -6,7 +6,7 @@ from typing import Any
 
 from retirement.core import db, notify
 from retirement.core.module import Module, register
-from retirement.modules.property import digest, score, store
+from retirement.modules.property import digest, omi, score, store
 from retirement.modules.property.models import Listing
 from retirement.modules.property.sources.idealista import IdealistaSource, QuotaExceeded
 from retirement.modules.property.sources.manual import ManualSource
@@ -23,6 +23,7 @@ LLM_BUDGET = 30
 class PropertyModule(Module):
     def migrate(self) -> None:
         store.migrate(self.conn)
+        omi.migrate(self.conn)
         ManualSource(self.conn, self.config).migrate()
 
     # ------------------------------------------------------------------ run
@@ -144,10 +145,20 @@ class PropertyModule(Module):
         ]
         spe_range = (min(ratios), max(ratios)) if len(ratios) > 1 else None
 
+        # One OMI lookup per comune rather than per listing.
+        market: dict[str, dict | None] = {}
+        for item in survivors:
+            if item.municipality not in market:
+                market[item.municipality] = omi.lookup(
+                    self.conn, item.municipality, item.province
+                )
+
         # Cheap numeric pass first, so the LLM only sees plausible candidates.
         prelim = sorted(
             survivors,
-            key=lambda l: score.score_listing(l, medians, weights, hard, None, spe_range)["total"],
+            key=lambda l: score.score_listing(
+                l, medians, weights, hard, None, spe_range, market.get(l.municipality)
+            )["total"],
             reverse=True,
         )
         assessments = self._assess(prelim[:LLM_BUDGET])
@@ -155,7 +166,8 @@ class PropertyModule(Module):
         results = []
         for listing in survivors:
             detail = score.score_listing(
-                listing, medians, weights, hard, assessments.get(listing.id), spe_range
+                listing, medians, weights, hard, assessments.get(listing.id), spe_range,
+                market.get(listing.municipality),
             )
             store.save_score(self.conn, listing.id, run_id, detail)
             results.append(

@@ -58,11 +58,13 @@ def _card(item: dict[str, Any]) -> str:
     )
 
     ppsqm = detail.get("price_per_sqm")
-    area_median = detail.get("area_median_per_sqm")
+    mark = detail.get("benchmark") or {}
     comparison = ""
-    if ppsqm and area_median:
-        delta = 100 * (ppsqm / area_median - 1)
-        comparison = f" · €{ppsqm:,.0f}/m² ({delta:+.0f}% vs area median)".replace(",", ".")
+    if ppsqm and mark.get("per_sqm"):
+        delta = 100 * (ppsqm / mark["per_sqm"] - 1)
+        against = ("the OMI value for the comune" if mark.get("source") == "omi"
+                   else "the area median")
+        comparison = f" · €{ppsqm:,.0f}/m² ({delta:+.0f}% vs {against})".replace(",", ".")
 
     concerns = "".join(
         f'<span class="concern">{c}</span>' for c in (detail.get("concerns") or [])
@@ -116,9 +118,10 @@ def render(
      {summary.get('gone', 0)} off market</p>
   {cards}
   {misses}
-  <p class="foot">Scores are relative to the stock currently on the market in each
-  search area, not absolute. A high score means good value <i>for that area</i>.
-  Edit criteria in config/property.yaml or the local web UI.</p>
+  <p class="foot">Value is measured against the Agenzia delle Entrate's OMI figures
+  for the comune where those have been imported, and against the stock currently
+  listed in the search area where they have not — the label after each price says
+  which. Market values: Agenzia Entrate — OMI.</p>
 </div></body></html>"""
 
     text_lines = [f"{i+1}. {item.get('title','')} — {_euro(item.get('price'))} — "
