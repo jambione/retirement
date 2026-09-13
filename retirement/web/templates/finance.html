@@ -3,7 +3,7 @@
 
 {% block style %}
 .hero{display:flex;align-items:flex-end;justify-content:space-between;gap:28px;flex-wrap:wrap}
-.big{font-family:var(--mono);font-size:52px;line-height:1;color:#F5F1EA;letter-spacing:-.02em}
+.big{font-family:var(--mono);font-size:52px;line-height:1;color:var(--ink);letter-spacing:-.02em}
 .delta{font-size:13.5px;margin-top:8px;color:var(--muted)}
 .split{display:flex;height:8px;border-radius:5px;overflow:hidden;margin:20px 0 10px;background:var(--line-2)}
 .split i{display:block;height:8px}
@@ -14,9 +14,9 @@
   font-size:13px;color:var(--ink-2);margin-bottom:12px}
 .catrow .amt{font-family:var(--mono);font-size:12.5px;text-align:right;color:var(--ink)}
 table.accts{width:100%;border-collapse:collapse;font-size:13px}
-table.accts th{text-align:left;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+table.accts th{text-align:left;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--faint);font-weight:400;padding:0 0 10px;border-bottom:1px solid var(--line)}
-table.accts td{padding:10px 0;border-bottom:1px solid #221E1D;color:var(--ink-2)}
+table.accts td{padding:10px 0;border-bottom:1px solid var(--line);color:var(--ink-2)}
 table.accts td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
 table.accts tr:last-child td{border-bottom:none}
 .liab td{color:var(--muted)}
@@ -33,14 +33,14 @@ table.accts tr:last-child td{border-bottom:none}
 </div>
 
 {% if import_error %}
-  <div class="card" style="border-color:#4A3A22;margin-bottom:14px">
+  <div class="card" style="border-color:#5C4526;margin-bottom:14px">
     <span class="pill warn">import failed</span>
     <p style="margin:10px 0 0;font-size:13.5px;color:var(--ink-2);line-height:1.55">{{ import_error }}</p>
   </div>
 {% endif %}
 
 {% if not snapshot %}
-  <h1 class="serif" style="font-size:30px;margin:6px 0 10px">Net worth</h1>
+  <h1 class="display" style="font-size:27px;letter-spacing:-.015em;margin:6px 0 10px">Net worth</h1>
   <div class="card">
     <p style="margin:0 0 18px;font-size:14.5px;color:var(--ink-2);line-height:1.6;max-width:640px">
       Export the balance sheet or net-worth report from the eMoney client portal and drop the
@@ -135,7 +135,7 @@ table.accts tr:last-child td{border-bottom:none}
   {% set total = snapshot.assets if snapshot.assets > 0 else 1 %}
   <div class="split">
     <i style="width: {{ (100 * (snapshot.assets - snapshot.liabilities) / total)|round(1) }}%;background:var(--accent)"></i>
-    <i style="width: {{ (100 * snapshot.liabilities / total)|round(1) }}%;background:#6E655C"></i>
+    <i style="width: {{ (100 * snapshot.liabilities / total)|round(1) }}%;background:#5B6B73"></i>
   </div>
   <div class="split-key">
     <span>Assets <span class="mono" style="color:var(--ink)">{{ '{:,.0f}'.format(snapshot.assets) }}</span></span>
@@ -175,7 +175,7 @@ table.accts tr:last-child td{border-bottom:none}
       <div style="display:flex;align-items:baseline;justify-content:space-between;
                   padding-top:12px;border-top:1px solid var(--line)">
         <span style="font-size:13px;color:var(--ink-2)">Net worth after</span>
-        <span class="mono" style="font-size:20px;color:#F3EEE7">{{ '{:,.0f}'.format(after) }}</span>
+        <span class="mono" style="font-size:20px;color:var(--ink)">{{ '{:,.0f}'.format(after) }}</span>
       </div>
       <p class="foot" style="margin-top:16px">
         Arithmetic, not advice: purchase price at {{ config.purchase.eur_usd }} USD per EUR plus
@@ -192,7 +192,7 @@ table.accts tr:last-child td{border-bottom:none}
 <div class="card" style="margin-top:14px">
   <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px">
     <span class="eyebrow">Accounts in this snapshot</span>
-    <span style="font-size:11.5px;color:var(--dim)">from {{ snapshot.source }}</span>
+    <span style="font-size:12.5px;color:var(--dim)">from {{ snapshot.source }}</span>
   </div>
   <table class="accts">
     <thead><tr><th>Account</th><th>Where</th><th>Bucket</th><th style="text-align:right">Balance</th></tr></thead>

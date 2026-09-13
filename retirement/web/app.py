@@ -28,6 +28,14 @@ app = FastAPI(title="Retirement project")
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Browsers ask for this by path whatever the <link> tags say."""
+    from fastapi.responses import FileResponse
+
+    return FileResponse(BASE / "static" / "favicon-32.png", media_type="image/png")
+
 _run_lock = threading.Lock()
 _last_run: dict[str, Any] = {}
 

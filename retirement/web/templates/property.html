@@ -11,11 +11,11 @@
 .ring .n{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-family:var(--mono);font-size:23px}
 .bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:14px}
-.bar-label{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint)}
+.bar-label{display:flex;justify-content:space-between;font-size:12px;color:var(--faint)}
 .bar-label b{font-family:var(--mono);font-weight:400;color:var(--ink-2)}
-.note{font-family:var(--serif);font-style:italic;font-size:15.5px;color:#BDB4A9;margin:0;line-height:1.45}
-.title-l{font-family:var(--serif);font-size:22px;color:#F3EEE7}
-.price{font-family:var(--mono);font-size:24px;color:#F3EEE7}
+.note{font-family:var(--sans);font-style:italic;font-size:15.5px;color:var(--muted);margin:0;line-height:1.45}
+.title-l{font-family:var(--display);font-weight:600;font-size:21px;color:var(--ink);letter-spacing:-.01em}
+.price{font-family:var(--mono);font-size:23px;color:var(--ink)}
 .verdicts{display:flex;gap:7px}
 .verdicts form{margin:0}
 .slider{position:relative;height:3px;background:var(--line-2);border-radius:2px;margin:14px 0 9px}
@@ -65,7 +65,7 @@
         <div style="display:flex;align-items:center;gap:9px;padding-top:14px;margin-top:14px;border-top:1px solid var(--line)">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.6"
                stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 5.6L20 10l-5.8 1.4L12 17l-2.2-5.6L4 10l5.8-1.4z"/></svg>
-          <span style="font-size:11.5px;color:#8A8179">read against every listing description</span>
+          <span style="font-size:12.5px;color:var(--faint)">read against every listing description</span>
         </div>
       </div>
 
@@ -74,14 +74,14 @@
         <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
           <input class="mono" name="min_price" type="number" value="{{ config.budget.min or 0 }}"
                  style="font-size:19px;border:none;padding:6px 0;background:transparent" aria-label="Minimum price">
-          <span style="font-size:11px;color:var(--dim)">to</span>
+          <span style="font-size:12px;color:var(--dim)">to</span>
           <input class="mono" name="max_price" type="number" value="{{ config.budget.max or 0 }}"
                  style="font-size:19px;border:none;padding:6px 0;background:transparent;text-align:right" aria-label="Maximum price">
         </div>
         <div class="slider"><i></i></div>
         <div style="display:flex;justify-content:space-between">
-          <span style="font-size:10.5px;color:var(--dim)">purchase price only</span>
-          <span style="font-size:10.5px;color:var(--dim)">+9–11% closing</span>
+          <span style="font-size:12px;color:var(--dim)">purchase price only</span>
+          <span style="font-size:12px;color:var(--dim)">+9–11% closing</span>
         </div>
       </div>
 
@@ -147,7 +147,7 @@
   <div>
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:16px;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:10px">
-        <h1 class="serif" style="font-size:27px">Worth your time</h1>
+        <h1 class="display" style="font-size:25px;letter-spacing:-.015em">Worth your time</h1>
         <button type="button" class="askb" data-scope="shortlist"
                 title="Ask B about the shortlist" aria-label="Ask B about the shortlist">B</button>
       </div>
@@ -229,10 +229,10 @@
           {% if d.note %}<p class="note">{{ d.note }}</p>{% endif %}
 
           <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
-                      padding-top:13px;border-top:1px solid #242020">
+                      padding-top:13px;border-top:1px solid var(--line)">
             <div>
               {% for concern in d.concerns or [] %}<span class="pill warn" style="margin-right:4px">{{ concern }}</span>{% endfor %}
-              {% if not d.concerns %}<span style="font-size:11px;color:var(--dim)">no flagged concerns</span>{% endif %}
+              {% if not d.concerns %}<span style="font-size:12px;color:var(--dim)">no flagged concerns</span>{% endif %}
             </div>
             <div class="verdicts">
               {% for verdict in ['shortlist','visit','reject'] %}
