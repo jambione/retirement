@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import sys
@@ -299,8 +300,11 @@ def cmd_ai_test(args) -> int:
     if note:
         print(f"         ! {note}")
 
+    prompt = args.prompt or "Reply with exactly: OK"
+    if args.prompt:
+        print(f"prompt   {prompt[:120]}")
     try:
-        result = ask.ask("Reply with exactly: OK", provider=provider, timeout=90)
+        result = ask.ask(prompt, provider=provider, timeout=args.timeout)
     except Exception as exc:
         print("✗ the call failed:\n")
         for line in str(exc).splitlines():
@@ -326,7 +330,13 @@ def cmd_ai_test(args) -> int:
             print("  And check it is logged in from a Terminal on the mini.")
         return 1
 
-    print(f"✓ answered in {result['seconds']}s: {result['answer'][:200]}")
+    answer = result["answer"]
+    print(f"✓ answered in {result['seconds']}s\n")
+    for line in answer.splitlines()[:20]:
+        print(f"    {line}")
+    # A fingerprint makes "it says the same thing every time" checkable rather
+    # than a feeling: run it twice with different prompts and compare.
+    print(f"\n  {len(answer)} chars · sha {hashlib.sha256(answer.encode()).hexdigest()[:12]}")
     return 0
 
 
@@ -434,6 +444,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_ai = sub.add_parser("ai-test", help="send one prompt to the AI backend and show the result")
     p_ai.add_argument("--provider", default="", help="agy | claude_cli | grok | anthropic_api")
+    p_ai.add_argument("--prompt", default="", help="ask something specific instead of the smoke test")
+    p_ai.add_argument("--timeout", type=float, default=90.0)
     p_ai.set_defaults(func=cmd_ai_test)
 
     p_probe = sub.add_parser("probe", help="call a source once and dump the raw response")

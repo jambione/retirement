@@ -319,7 +319,9 @@ input[type=file]::file-selector-button:hover{border-color:var(--accent);color:va
         wrap.className = 'ask-answer';
         const who = document.createElement('div');
         who.className = 'who';
-        who.textContent = res.d.provider_label + ' · ' + res.d.seconds + 's';
+        who.textContent = res.d.provider_label + ' · ' + res.d.seconds + 's'
+          + ' · sent ' + (res.d.sent_chars || 0).toLocaleString() + ' chars of '
+          + (res.d.scope || '') ;
         const body = document.createElement('div');
         body.textContent = res.d.answer;
         wrap.appendChild(who); wrap.appendChild(body);

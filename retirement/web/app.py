@@ -383,10 +383,9 @@ async def ask_run(request: Request):
         built = context.build(
             scope, conn, _context_config(scope), listing_id=str(payload.get("listing_id", ""))
         )
-        result = ask.ask(
-            context.prompt_for(built, question),
-            provider=payload.get("provider") or None,
-        )
+        prompt = context.prompt_for(built, question)
+        result = ask.ask(prompt, provider=payload.get("provider") or None)
+        result["sent_chars"] = len(prompt)
     except Exception as exc:
         # The panel shows this verbatim; a CLI that is merely logged out should
         # say so rather than turn into a generic 500.
