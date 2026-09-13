@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.jambi.retirement-web — the web UI, kept alive on the mini.
+
+  Bootstrapped into gui/<uid> for the same reason com.jambi.trading-desk is:
+  a job in that domain runs inside the console user's session and inherits its
+  Keychain, and `launchctl bootstrap` / `kickstart` against gui/<uid> both work
+  from an ssh session (unlike `launchctl asuser`, which needs root). That is
+  what lets scripts/deploy_mini.sh reload the service without anyone walking
+  to the machine.
+
+  uvicorn runs in the FOREGROUND here on purpose. KeepAlive means launchd is
+  the supervisor, so it must be able to see the process exit -- ./retire start
+  backgrounds with nohup and would be reaped-and-restarted in a loop.
+
+  It binds 127.0.0.1 only. Public access is the cloudflared tunnel's job, and
+  there is no login in this app -- put Cloudflare Access in front of the
+  hostname before you route it. See scripts/cloudflare_setup.md.
+
+  Install: scripts/install_agents.sh (idempotent, safe over ssh).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jambi.retirement-web</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /Users/jambimac/repo/retirement &amp;&amp; exec .venv/bin/uvicorn retirement.web.app:app --host 127.0.0.1 --port 8891</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/jambimac/repo/retirement/logs/web.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jambimac/repo/retirement/logs/web.log</string>
+</dict>
+</plist>

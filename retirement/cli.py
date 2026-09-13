@@ -1,0 +1,134 @@
+"""Command line entry point: `retirement <command>`."""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+
+from retirement.core import db
+from retirement.core.config import Profile, load_dotenv, load_yaml
+from retirement.core.module import REGISTRY, load_registry
+
+
+def _setup(verbose: bool = False) -> None:
+    load_dotenv()
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+    )
+    load_registry()
+
+
+def _module(name: str, conn):
+    profile = Profile.load()
+    enabled = profile.enabled_modules()
+    if name not in enabled:
+        raise SystemExit(f"module '{name}' is not enabled in config/profile.yaml")
+    if name not in REGISTRY:
+        raise SystemExit(f"module '{name}' has no implementation registered")
+    config = load_yaml(enabled[name]["config"])
+    return REGISTRY[name](config, conn)
+
+
+def cmd_run(args) -> int:
+    conn = db.connect()
+    module = _module(args.module, conn)
+    summary = module.run(dry_run=args.dry_run)
+    print(json.dumps(summary, indent=2, default=str))
+    for warning in summary.get("warnings", []):
+        print(f"warning: {warning}", file=sys.stderr)
+    return 0
+
+
+def cmd_list(args) -> int:
+    conn = db.connect()
+    from retirement.modules.property import store
+
+    for i, item in enumerate(store.latest_shortlist(conn, args.limit), 1):
+        detail = item.get("detail") or {}
+        price = f"€{item['price']:,.0f}".replace(",", ".") if item.get("price") else "n/a"
+        print(
+            f"{i:>2}. [{detail.get('total', 0):>5.1f}] {price:>10}  "
+            f"{(item.get('municipality') or '')[:22]:<22} {item.get('url', '')}"
+        )
+    return 0
+
+
+def cmd_add(args) -> int:
+    conn = db.connect()
+    from retirement.modules.property.sources.manual import ManualSource
+
+    source = ManualSource(conn, {})
+    for url in args.urls:
+        source.add(url, args.area)
+        print(f"queued {url}")
+    return 0
+
+
+def cmd_digest(args) -> int:
+    """Re-send the last shortlist without re-fetching anything."""
+    conn = db.connect()
+    from retirement.modules.property import digest, store
+    from retirement.core import notify
+
+    shortlist = store.latest_shortlist(conn, args.limit)
+    subject, html, text = digest.render(shortlist, [], {"scanned": len(shortlist)})
+    if args.preview:
+        out = "var/digest-preview.html"
+        from retirement.core.config import project_root
+
+        path = project_root() / out
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(html, encoding="utf-8")
+        print(f"wrote {path}")
+        return 0
+    notify.send(subject, html, text)
+    print(f"sent: {subject}")
+    return 0
+
+
+def cmd_serve(args) -> int:
+    import uvicorn
+
+    uvicorn.run("retirement.web.app:app", host=args.host, port=args.port, reload=args.reload)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="retirement", description=__doc__)
+    parser.add_argument("-v", "--verbose", action="store_true")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_run = sub.add_parser("run", help="run one module cycle")
+    p_run.add_argument("module", nargs="?", default="property")
+    p_run.add_argument("--dry-run", action="store_true", help="score but do not email")
+    p_run.set_defaults(func=cmd_run)
+
+    p_list = sub.add_parser("list", help="print the current shortlist")
+    p_list.add_argument("--limit", type=int, default=20)
+    p_list.set_defaults(func=cmd_list)
+
+    p_add = sub.add_parser("add", help="queue listing URLs found elsewhere")
+    p_add.add_argument("urls", nargs="+")
+    p_add.add_argument("--area", default="manual")
+    p_add.set_defaults(func=cmd_add)
+
+    p_digest = sub.add_parser("digest", help="re-send or preview the last shortlist")
+    p_digest.add_argument("--limit", type=int, default=12)
+    p_digest.add_argument("--preview", action="store_true", help="write HTML to var/ instead")
+    p_digest.set_defaults(func=cmd_digest)
+
+    p_serve = sub.add_parser("serve", help="run the local web UI")
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8891)
+    p_serve.add_argument("--reload", action="store_true")
+    p_serve.set_defaults(func=cmd_serve)
+
+    args = parser.parse_args(argv)
+    _setup(args.verbose)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

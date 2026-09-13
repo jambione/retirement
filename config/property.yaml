@@ -1,0 +1,73 @@
+# Property search criteria. Edit freely -- the web UI writes back to this file.
+#
+# `prompt` is the plain-English version of what you want. If ANTHROPIC_API_KEY is
+# set, it is parsed into structured filters and also used to judge each listing's
+# description against the things that are hard to express as numbers
+# ("strong sense of community", "authentic, not an expat colony").
+# The structured fields below always win where the two disagree.
+
+prompt: >
+  A small town with a strong sense of community and an authentic Italian feel.
+  Some expat presence is fine, but not an expat colony. Within about an hour of
+  an international airport. Somewhere that works as a vacation home now, rents
+  well when we are not there, and that we could retire into later.
+
+budget:
+  currency: EUR
+  min: 150000
+  max: 450000
+  # Purchase price only. Italian closing costs run roughly 9-11% on a second
+  # home bought from a private seller; renovation is separate.
+
+property:
+  types: [homes]            # idealista propertyType
+  operation: sale
+  min_size_sqm: 90
+  min_bedrooms: 2
+  min_bathrooms: 1
+  exclude_keywords:
+    - "da ristrutturare completamente"   # full gut jobs, unless you want them
+    - "rudere"
+
+# Search areas. Each is a radius around a point -- idealista searches by centre +
+# distance. Keep the list short: each area costs API calls on every run.
+areas:
+  - id: lake-garda-south
+    label: "Lake Garda (southern shore)"
+    center: [45.4400, 10.5300]     # Desenzano del Garda
+    radius_km: 25
+    note: "Northern lakes strategy: higher entry price, strongest rental demand."
+
+  - id: valle-ditria
+    label: "Valle d'Itria (Puglia)"
+    center: [40.7500, 17.2390]     # Locorotondo
+    radius_km: 30
+    note: "Southern strategy: lower entry price, 7% flat-tax regime eligible."
+
+  - id: chieti-abruzzo
+    label: "Chieti / Abruzzo coast hinterland"
+    center: [42.3510, 14.1680]     # Chieti
+    radius_km: 35
+    note: "Southern strategy, cheapest entry, thinner rental market."
+
+# What "best value" means. Weights are relative and are normalised at scoring
+# time, so you can change one without rebalancing the rest.
+scoring:
+  weights:
+    price_vs_area_median: 0.30   # cheaper per m2 than comparable local stock
+    size_per_euro: 0.15
+    airport_access: 0.15         # drive time proxy to an international airport
+    town_character: 0.20         # LLM read of the description vs your prompt
+    condition: 0.10              # move-in ready scores above needs-everything
+    rental_potential: 0.10
+  hard_filters:
+    max_airport_km: 90           # ~1 hour by car
+    require_photos: true
+  # Listings must clear the hard filters. Everything else is weighted, so a
+  # slightly-too-far house that is otherwise perfect will not silently vanish --
+  # it lands in the "near miss" section of the digest instead.
+
+digest:
+  max_listings: 12
+  include_near_misses: true
+  only_send_if_new: true         # do not email an unchanged shortlist

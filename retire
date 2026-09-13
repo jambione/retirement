@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# ./retire — control script for the local service, same shape as ./trading.
+#
+#   ./retire setup                 create .venv and install
+#   ./retire start|stop|restart|status
+#   ./retire scan [--dry-run]      one pipeline cycle, now
+#   ./retire list                  current shortlist in the terminal
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+PORT="${RETIREMENT_PORT:-8891}"
+PIDFILE="$ROOT/var/retirement.pid"
+LOG="$ROOT/logs/retirement.log"
+VENV="$ROOT/.venv"
+PY="$VENV/bin/python"
+
+mkdir -p "$ROOT/var" "$ROOT/logs"
+
+need_venv() { [ -x "$PY" ] || { echo "No virtualenv yet. Run: ./retire setup"; exit 1; }; }
+is_running() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+
+case "${1:-status}" in
+  setup)
+    if command -v uv >/dev/null 2>&1; then
+      uv venv "$VENV" && uv pip install --python "$PY" -e ".[dev]"
+    else
+      python3 -m venv "$VENV" && "$PY" -m pip install -qU pip && "$PY" -m pip install -e ".[dev]"
+    fi
+    [ -f .env ] || { cp .env.example .env; echo "→ created .env, fill in your keys"; }
+    echo "✓ setup complete"
+    ;;
+
+  start)
+    need_venv
+    if is_running; then echo "already running (pid $(cat "$PIDFILE"))"; exit 0; fi
+    nohup "$VENV/bin/uvicorn" retirement.web.app:app \
+      --host 127.0.0.1 --port "$PORT" >> "$LOG" 2>&1 &
+    echo $! > "$PIDFILE"
+    sleep 1
+    echo "✓ started on http://127.0.0.1:$PORT (pid $(cat "$PIDFILE"))"
+    ;;
+
+  stop)
+    if is_running; then
+      kill "$(cat "$PIDFILE")" && rm -f "$PIDFILE" && echo "✓ stopped"
+    else
+      pkill -f "uvicorn retirement.web.app" 2>/dev/null && echo "✓ stopped (by pattern)" || echo "not running"
+      rm -f "$PIDFILE"
+    fi
+    ;;
+
+  restart) "$0" stop; sleep 1; "$0" start ;;
+
+  status)
+    if is_running; then echo "✓ web  running (pid $(cat "$PIDFILE")) on :$PORT"
+    else echo "✗ web  not running"; fi
+    curl -s --max-time 3 "http://127.0.0.1:$PORT/healthz" >/dev/null \
+      && echo "✓ http healthz ok" || echo "✗ http not answering"
+    if [ -x "$PY" ]; then
+      "$PY" - <<'PYEOF' 2>/dev/null || true
+from retirement.core.config import load_dotenv, db_path
+from retirement.core import db
+load_dotenv()
+if db_path().exists():
+    conn = db.connect()
+    row = conn.execute("SELECT COUNT(*) c FROM sqlite_master WHERE name='listings'").fetchone()
+    if row and row["c"]:
+        n = conn.execute("SELECT COUNT(*) c FROM listings WHERE active=1").fetchone()["c"]
+        print(f"  {n} active listings · {db.usage_this_month(conn,'idealista')} idealista calls this month")
+PYEOF
+    fi
+    ;;
+
+  scan) need_venv; shift || true; "$PY" -m retirement.cli run property "$@" ;;
+  list) need_venv; "$PY" -m retirement.cli list ;;
+  *)    sed -n '2,8p' "$0"; exit 2 ;;
+esac

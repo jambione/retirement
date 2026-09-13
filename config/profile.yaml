@@ -1,0 +1,18 @@
+# Household-level retirement profile. Shared by every module.
+# Nothing here is country-specific -- that lives in each module's config.
+
+household:
+  members:
+    - name: Jonathan
+    - name: Spouse
+  target_retirement_year: null      # set when you have a number in mind
+  base_currency: USD
+
+# Modules enabled in this project. Add new ones as you build them.
+modules:
+  property:
+    enabled: true
+    config: config/property.yaml
+  # finance:   { enabled: false }   # drawdown / tax modelling
+  # healthcare:{ enabled: false }   # coverage comparison by country
+  # residency: { enabled: false }   # visa + residency pathway tracking
