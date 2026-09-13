@@ -235,11 +235,25 @@ def cmd_ai_test(args) -> int:
         print("✗ the call failed:\n")
         for line in str(exc).splitlines():
             print(f"    {line}")
-        print("\n  If it mentions authentication, run `agy` with no arguments from a")
-        print("  Terminal ON the mini — the login lives in that user's Keychain and an")
-        print("  ssh session cannot reach it.")
-        print("  If it mentions an unrecognised flag, comment out ASK_AGY_EFFORT in .env")
-        print("  or set ASK_AGY_MODEL to one `agy models` lists.")
+        binary = (entry or {}).get("path") or provider
+        message = str(exc).lower()
+
+        if "model" in message:
+            print(f"\n  Unknown model id. Ask the CLI what it has:  {binary} models")
+            print(f"  Then set ASK_{provider.split('_')[0].upper()}_MODEL in .env to one of them,")
+            print("  or leave it unset and the CLI uses its own default.")
+        elif any(word in message for word in ("auth", "logged in", "sign in", "login")):
+            print(f"\n  Not logged in. Run `{binary}` with no arguments from a Terminal")
+            print("  ON the mini — the credential is in that user's login Keychain.")
+            print("\n  NOTE: running this over ssh cannot read that Keychain either, so a")
+            print("  login error here is not proof the SERVICE is logged out. The agents")
+            print("  run in gui/<uid>, which can. The honest test is the B button on the")
+            print("  site itself.")
+        else:
+            print(f"\n  The CLI did not say much. Try it by hand to see the full output:")
+            print(f"      {binary} -p 'Reply with exactly: OK'")
+            print(f"      {binary} models        # if it is a model-id problem")
+            print("  And check it is logged in from a Terminal on the mini.")
         return 1
 
     print(f"✓ answered in {result['seconds']}s: {result['answer'][:200]}")

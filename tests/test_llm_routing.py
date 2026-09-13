@@ -259,6 +259,37 @@ def test_a_failing_call_reports_the_command_and_the_stderr(monkeypatch, tmp_path
     assert "hello" not in text         # ...and not leaked into the error
 
 
+def test_no_model_id_is_sent_unless_one_is_configured(monkeypatch):
+    """A guessed model id fails the whole call with "unknown model id"; the
+    CLI's own default always exists."""
+    captured = {}
+    monkeypatch.setattr(ask, "resolve_binary", lambda _n: "/x/cli")
+    monkeypatch.setattr(ask, "_run",
+                        lambda cmd, timeout, env_overrides=None:
+                        captured.setdefault("cmd", cmd) or '{"status":"SUCCESS","response":"ok"}')
+    for var in ("ASK_AGY_MODEL", "ASK_CLAUDE_MODEL", "ASK_GROK_MODEL", "ASK_AGY_EFFORT"):
+        monkeypatch.delenv(var, raising=False)
+
+    ask._agy_cli("p", 60.0)
+    assert "--model" not in captured["cmd"]
+
+    captured.clear()
+    ask._claude_cli("p", 60.0)
+    assert "--model" not in captured["cmd"]
+    assert "--disallowedTools" in captured["cmd"]      # the safety flags stay
+
+
+def test_a_configured_model_is_sent(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ask, "resolve_binary", lambda _n: "/x/agy")
+    monkeypatch.setattr(ask, "_run",
+                        lambda cmd, timeout, env_overrides=None:
+                        captured.setdefault("cmd", cmd) or '{"status":"SUCCESS","response":"ok"}')
+    monkeypatch.setenv("ASK_AGY_MODEL", "gemini-3.7-flash-high")
+    ask._agy_cli("p", 60.0)
+    assert captured["cmd"][captured["cmd"].index("--model") + 1] == "gemini-3.7-flash-high"
+
+
 def test_effort_is_only_passed_when_it_is_configured(monkeypatch):
     captured = {}
     monkeypatch.setattr(ask, "resolve_binary", lambda _n: "/x/agy")

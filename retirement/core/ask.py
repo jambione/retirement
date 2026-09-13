@@ -173,12 +173,12 @@ def _run(cmd: list[str], timeout: float, env_overrides: dict[str, str] | None = 
 # ── backends ───────────────────────────────────────────────────────────────
 def _claude_cli(prompt: str, timeout: float) -> str:
     binary = resolve_binary(env("ASK_CLAUDE_BIN", "claude") or "claude")
-    return _run(
-        [binary, "-p", prompt,
-         "--model", env("ASK_CLAUDE_MODEL", "sonnet") or "sonnet",
-         "--disallowedTools", "Bash", "Edit", "Write", "NotebookEdit"],
-        timeout,
-    )
+    cmd = [binary, "-p", prompt,
+           "--disallowedTools", "Bash", "Edit", "Write", "NotebookEdit"]
+    model = env("ASK_CLAUDE_MODEL")
+    if model:
+        cmd += ["--model", model]
+    return _run(cmd, timeout)
 
 
 # Markers the Antigravity CLI uses when its subscription login has lapsed.
@@ -202,8 +202,10 @@ def _agy_cli(prompt: str, timeout: float) -> str:
         # truncated answer on a long assessment.
         "--print-timeout", f"{int(max(30.0, timeout))}s",
         "--disable-slash-commands",
-        "--model", env("ASK_AGY_MODEL", "gemini-3.7-flash-high") or "gemini-3.7-flash-high",
     ]
+    model = env("ASK_AGY_MODEL")
+    if model:
+        cmd += ["--model", model]
     # Only when asked for. trading-helper passes --effort conditionally, and a
     # flag this build does not recognise fails the whole call.
     effort = env("ASK_AGY_EFFORT")
@@ -243,13 +245,15 @@ def _grok_cli(prompt: str, timeout: float) -> str:
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as fh:
             fh.write(prompt)
+        cmd = [binary, "--prompt-file", tmp,
+               "--output-format", "json",
+               "--permission-mode", "bypassPermissions",
+               "--disallowed-tools", "Agent,run_terminal_cmd,search_replace,write,Write,Edit,Bash"]
+        model = env("ASK_GROK_MODEL")
+        if model:
+            cmd += ["-m", model]
         return _run(
-            [binary, "--prompt-file", tmp,
-             "--output-format", "json",
-             "--permission-mode", "bypassPermissions",
-             "--disallowed-tools", "Agent,run_terminal_cmd,search_replace,write,Write,Edit,Bash",
-             "-m", env("ASK_GROK_MODEL", "grok-4-fast") or "grok-4-fast"],
-            timeout,
+            cmd, timeout,
             # Subscription login only — never bill the console API by accident.
             env_overrides={"XAI_API_KEY": "", "GROK_API_KEY": ""},
         )
