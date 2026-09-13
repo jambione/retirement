@@ -358,3 +358,90 @@ def test_a_listing_keeps_one_reference_across_runs(conn):
     assert one == two
     # and the portal's own code finds it too
     assert store.by_ref(conn, "99") is None or store.by_ref(conn, "99")["ref"] == one
+
+
+# ── carrying a stale band forward ──────────────────────────────────────────
+def seed_index(conn: sqlite3.Connection, base: float = 100.0, now: float = 111.3) -> None:
+    store.put_index(conn, [
+        {"series": "hpi_existing", "area": "ITFG", "period": "2018-Q4",
+         "value": base, "source": "ISTAT — IPAB"},
+        {"series": "hpi_existing", "area": "ITFG", "period": "2025-Q4",
+         "value": now, "source": "ISTAT — IPAB"},
+    ])
+
+
+def test_semester_maps_to_the_quarter_it_ends_in():
+    assert store.semester_quarter("2018-2") == "2018-Q4"
+    assert store.semester_quarter("2026-1") == "2026-Q2"
+    assert store.semester_quarter("nonsense") == ""
+
+
+def test_index_factor_declines_to_adjust_when_it_should(conn):
+    seed_index(conn)
+    assert store.index_factor(conn, "ITFG", "") is None            # no semester
+    assert store.index_factor(conn, "ITC", "2018-2") is None       # no index for that area
+    store.put_index(conn, [
+        {"series": "hpi_existing", "area": "ITE", "period": "2018-Q4", "value": 100.0,
+         "source": "ISTAT — IPAB"},
+        {"series": "hpi_existing", "area": "ITE", "period": "2019-Q2", "value": 100.4,
+         "source": "ISTAT — IPAB"},
+    ])
+    assert store.index_factor(conn, "ITE", "2018-2") is None       # under 1% is noise
+
+
+def test_band_is_carried_forward_and_keeps_the_original(conn):
+    seed_omi(conn)                       # 2025-1 band, 1200-1800, rent 4.0-6.0
+    conn.execute("UPDATE omi_zone_values SET semester = '2018-2'")
+    store.put_index(conn, [
+        {"series": "hpi_existing", "area": "ITFG", "period": "2018-Q4", "value": 100.0,
+         "source": "ISTAT — IPAB"},
+        {"series": "hpi_existing", "area": "ITFG", "period": "2025-Q4", "value": 111.3,
+         "source": "ISTAT — IPAB"},
+    ])
+    conn.commit()
+
+    band = bands.band_for(conn, None, None, municipality="Cisternino",
+                          typology="homes", region="Puglia")
+    assert band["adjusted"]["pct"] == pytest.approx(11.3, abs=0.1)
+    assert band["as_published"]["sale_min"] == 1200
+    assert band["sale_min"] == round(1200 * 1.113)
+    # rents are NOT carried forward: IPAB measures purchases
+    assert band["rent_min"] == 4.0 and band["rent_max"] == 6.0
+    assert "NOT carried forward" in components.gross_yield(180_000, 120, band).detail
+
+
+def test_the_adjustment_is_in_the_caveats_not_just_the_arithmetic(conn):
+    seed_omi(conn)
+    conn.execute("UPDATE omi_zone_values SET semester = '2018-2'")
+    seed_index(conn)
+    seed_stats(conn)
+    conn.execute("UPDATE comuni SET region = 'Puglia' WHERE istat = '074005'")
+    conn.commit()
+    result = scoring.score(conn, municipality="Cisternino", price=180_000, size_m2=120,
+                           typology="homes")
+    assert any("carried forward" in note for note in result["caveats"])
+    assert any("current OMI semester removes the adjustment" in note for note in result["caveats"])
+
+
+def test_region_maps_to_the_index_area():
+    from retirement.modules.value.ingestion.istat_hpi import area_for
+
+    assert area_for("Puglia") == "ITFG" and area_for("Abruzzo") == "ITFG"
+    assert area_for("Lombardia") == "ITC" and area_for("Veneto") == "ITD"
+    assert area_for("Toscana") == "ITE"
+    assert area_for("") == "IT"            # national is a fallback, not a wrong answer
+
+
+def test_index_parser_keeps_levels_and_drops_changes():
+    from retirement.modules.value.ingestion import istat_hpi
+
+    csv_text = (
+        "DATAFLOW,FREQ,REF_AREA,DATA_TYPE,MEASURE,PURCHASES_DWELLINGS,TIME_PERIOD,OBS_VALUE\n"
+        "x,Q,ITFG,59,4,EXST_DW,2025-Q4,107.1\n"      # the level we want
+        "x,Q,ITFG,59,7,EXST_DW,2025-Q4,3.0\n"        # a year-on-year change
+        "x,Q,ITFG,59,4,NEW_DW,2025-Q4,120.4\n"
+    )
+    rows = istat_hpi.parse(csv_text)
+    assert len(rows) == 2
+    assert {r["series"] for r in rows} == {"hpi_existing", "hpi_new"}
+    assert rows[0]["value"] == 107.1

@@ -269,6 +269,7 @@ it does it on free, official data only. No paid API, no scraping.
 ```bash
 ./retire value coverage                      # what is loaded, and what is not
 ./retire value ispra --prov 074 --stats      # a whole province, free, no login
+./retire value hpi                           # ISTAT house price index, free, no login
 ./retire value ispra 074005                  # or one comune
 ./retire value omi --scan                    # imports everything in data/omi/
 ./retire value score --lat 40.743 --lng 17.426 --price 180000 --size 120
@@ -285,6 +286,13 @@ rental yield from the OMI rent band (20), demand and demographics (20),
 market liquidity from NTN (10), amenities from OpenStreetMap (10), minus a
 hazard penalty of up to 25 from ISPRA's flood and landslide mosaics and the
 seismic classification.
+
+**Between OMI releases the bands are carried forward.** OMI publishes twice a
+year; ISTAT's house price index is quarterly and free. When the loaded band is
+older than the index, it is aged by the index for its macro-area and the answer
+shows the factor, both quarters and the figures as published — sale only, never
+rents, because IPAB measures purchases. Importing the current semester removes
+the adjustment.
 
 The nightly cycle scores every listing twice: the fit score you already had,
 ranked against what else is listed nearby, and the value score, ranked against

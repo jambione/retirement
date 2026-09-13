@@ -155,6 +155,15 @@ def standing_caveats(band: dict[str, Any], province: str = "") -> list[str]:
             f"{province.upper()} is a tavolare province: OMI transaction volumes there "
             "are incomplete, so liquidity and trend signals are weaker than elsewhere."
         )
-    if band.get("semester"):
+    move = band.get("adjusted")
+    if move:
+        notes.append(
+            f"The band was published for {band.get('semester')} and has been carried "
+            f"forward {move['pct']:+.1f}% to {move['to']} using ISTAT's house price index "
+            f"for {move['area']} (existing dwellings). That is a regional average applied "
+            "to one zone: a single comune can and does diverge from it. Importing the "
+            "current OMI semester removes the adjustment entirely."
+        )
+    elif band.get("semester"):
         notes.append(f"OMI semester {band['semester']} — revised twice a year.")
     return notes

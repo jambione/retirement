@@ -92,9 +92,33 @@ def _pick(rows: Sequence[dict[str, Any]], typology: str,
     return list(rows), "all residential rows in the zone"
 
 
+def _carry_forward(conn: sqlite3.Connection, band: dict[str, Any], region: str) -> None:
+    """Age a published band to today using ISTAT's house price index.
+
+    Only the SALE band. IPAB measures what people paid to buy, not what they
+    paid to rent, and rents in Italy have not moved with prices over this
+    period -- applying a purchase index to a rent band would be a guess wearing
+    a citation. The rent band stays as published and says so.
+
+    Nothing is overwritten: `as_published` keeps the original figures, and
+    `adjusted` carries the factor, both quarters and the area it came from, so
+    the answer can show its working.
+    """
+    from retirement.modules.value.ingestion.istat_hpi import area_for
+
+    move = store.index_factor(conn, area_for(region), band.get("semester", ""))
+    if not move or not band.get("sale_mid"):
+        return
+    band["as_published"] = {k: band.get(k) for k in ("sale_mid", "sale_min", "sale_max")}
+    for key in ("sale_mid", "sale_min", "sale_max"):
+        if band.get(key):
+            band[key] = round(band[key] * move["factor"])
+    band["adjusted"] = move
+
+
 def band_for(conn: sqlite3.Connection, lat: float | None, lng: float | None,
              municipality: str = "", istat: str = "", typology: str = "",
-             condition: str = "") -> dict[str, Any]:
+             condition: str = "", region: str = "") -> dict[str, Any]:
     """The band to judge a listing against, plus how it was found.
 
     Returns `available: False` rather than a number when OMI has nothing for
@@ -125,6 +149,8 @@ def band_for(conn: sqlite3.Connection, lat: float | None, lng: float | None,
 
     chosen, match = _pick(rows, typ, cond)
     band = _aggregate(chosen)
+    band["semester"] = semester
+    _carry_forward(conn, band, region)
     band.update({
         "available": band["sale_mid"] is not None or band["rent_mid"] is not None,
         "semester": semester, "source": SOURCE, "grain": grain, "match": match,

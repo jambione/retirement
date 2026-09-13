@@ -108,6 +108,19 @@ CREATE TABLE IF NOT EXISTS comune_extent (
 );
 CREATE INDEX IF NOT EXISTS idx_extent_bbox ON comune_extent(min_lat, max_lat, min_lng, max_lng);
 
+-- A published index, by area and quarter. Not per comune and not per zone:
+-- this exists to carry a semi-annual OMI band forward to today, and to say by
+-- how much and on whose authority.
+CREATE TABLE IF NOT EXISTS market_index (
+    series  TEXT NOT NULL,           -- 'hpi_existing', 'hpi_all', 'hpi_new'
+    area    TEXT NOT NULL,           -- NUTS: IT, ITC, ITD, ITE, ITFG
+    period  TEXT NOT NULL,           -- '2025-Q4'
+    value   REAL NOT NULL,
+    source  TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (series, area, period)
+);
+
 CREATE TABLE IF NOT EXISTS value_scores (
     listing_id TEXT PRIMARY KEY,
     scored_at  TEXT NOT NULL,
@@ -504,3 +517,71 @@ def put_extent(conn: sqlite3.Connection, istat: str, extent: Any, source: str) -
     )
     conn.commit()
     return True
+
+
+# ── a published index, and what it does to an old band ─────────────────────
+def put_index(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
+    payload = [(r["series"], r["area"], r["period"], float(r["value"]), r["source"], utcnow())
+               for r in rows]
+    conn.executemany(
+        """INSERT OR REPLACE INTO market_index (series, area, period, value, source, fetched_at)
+           VALUES (?,?,?,?,?,?)""",
+        payload,
+    )
+    conn.commit()
+    return len(payload)
+
+
+def index_at(conn: sqlite3.Connection, series: str, area: str,
+             period: str = "") -> dict[str, Any] | None:
+    """The index for a quarter, or the newest one when no quarter is named."""
+    try:
+        if period:
+            row = conn.execute(
+                "SELECT * FROM market_index WHERE series=? AND area=? AND period=?",
+                (series, area, period),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM market_index WHERE series=? AND area=? "
+                "ORDER BY period DESC LIMIT 1",
+                (series, area),
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return dict(row) if row else None
+
+
+def semester_quarter(semester: str) -> str:
+    """OMI '2018-2' covers July-December, so the quarter it ends in is 2018-Q4.
+    Carrying forward from the END of the semester is the conservative choice:
+    it credits the band with the whole period it was measured over."""
+    try:
+        year, half = semester.split("-")
+        return f"{int(year)}-Q{4 if half.strip() == '2' else 2}"
+    except (ValueError, AttributeError):
+        return ""
+
+
+def index_factor(conn: sqlite3.Connection, area: str, semester: str,
+                 series: str = "hpi_existing") -> dict[str, Any] | None:
+    """How much an index says prices moved between an OMI semester and now.
+
+    Returns None whenever the honest answer is "do not adjust": no index
+    loaded, no reading for that quarter, or a gap too small to bother with.
+    """
+    base_period = semester_quarter(semester)
+    if not base_period:
+        return None
+    base = index_at(conn, series, area, base_period) or index_at(conn, "hpi_all", area, base_period)
+    latest = index_at(conn, series, area) or index_at(conn, "hpi_all", area)
+    if not base or not latest or not base["value"]:
+        return None
+    if latest["period"] <= base_period:
+        return None                       # the band is as new as the index
+    factor = latest["value"] / base["value"]
+    if abs(factor - 1) < 0.01:
+        return None                       # under a percent is noise, not a correction
+    return {"factor": round(factor, 4), "from": base_period, "to": latest["period"],
+            "area": area, "series": series, "source": latest["source"],
+            "pct": round((factor - 1) * 100, 1)}

@@ -351,7 +351,8 @@ def cmd_value(args) -> int:
 
     from retirement.core.config import project_root
     from retirement.modules.value import scoring, store
-    from retirement.modules.value.ingestion import ispra, istat, mef_irpef, omi, seismic
+    from retirement.modules.value.ingestion import (ispra, istat, istat_hpi,
+                                                   mef_irpef, omi, seismic)
 
     conn = db.connect()
     store.migrate(conn)
@@ -465,6 +466,19 @@ def cmd_value(args) -> int:
         for note in result["caveats"]:
             print(f"    — {note}")
         print("    sources: " + ", ".join(result["sources"]))
+        return 0
+
+    if action == "hpi":
+        result = istat_hpi.ingest(conn, start=args.start)
+        print(f"  ✓ {result['rows']:,} index readings, {result['from']} to {result['to']}")
+        print(f"    areas: {', '.join(result['areas'])}")
+        print(f"    {result['source']}")
+        # What it will actually do to a band, since that is the point of it.
+        for area, label in (("ITC", "Nord-ovest"), ("ITD", "Nord-est"),
+                            ("ITE", "Centro"), ("ITFG", "Sud e Isole")):
+            move = store.index_factor(conn, area, store.latest_semester(conn) or "2018-2")
+            if move:
+                print(f"    {label:12} {move['from']} → {move['to']}  {move['pct']:+.1f}%")
         return 0
 
     if action == "ref":
@@ -657,6 +671,11 @@ def main(argv: list[str] | None = None) -> int:
     v_score.add_argument("--osm", action="store_true", help="call Overpass (cached 30 days)")
     v_score.add_argument("--json", action="store_true")
     v_score.set_defaults(func=cmd_value)
+
+    v_hpi = value_sub.add_parser("hpi", help="ISTAT house price index (free, no login) — "
+                                              "carries a stale OMI band forward")
+    v_hpi.add_argument("--start", default="2015-Q1")
+    v_hpi.set_defaults(func=cmd_value)
 
     v_ref = value_sub.add_parser("ref", help="look a property up by its reference")
     v_ref.add_argument("reference", help="e.g. CIS1001, or a portal code or URL")

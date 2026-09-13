@@ -71,6 +71,13 @@ def price(ask: float | None, size_m2: float | None, band: dict[str, Any],
     detail = (f"€{per_sqm:,.0f}/m² asked against an OMI middle of €{mid:,.0f}/m² — "
               f"{abs(discount) * 100:.0f}% {'over' if discount < 0 else 'under'} it. "
               f"Band for this zone and type: €{low:,.0f}–{high:,.0f}/m².")
+    move = band.get("adjusted")
+    if move:
+        published = band.get("as_published", {})
+        detail += (f" That band is the {band.get('semester')} publication carried forward "
+                   f"{move['pct']:+.1f}% to {move['to']} by the house price index for "
+                   f"{move['area']}; as published it was "
+                   f"€{published.get('sale_min', 0):,.0f}–{published.get('sale_max', 0):,.0f}.")
     if "below_band" in flags:
         detail += (" Under the bottom of the band — that is either a real discount "
                    "or something the listing is not saying.")
@@ -99,7 +106,10 @@ def gross_yield(ask: float | None, size_m2: float | None, band: dict[str, Any],
                 "No OMI rent band for this zone" if not band.get("rent_mid")
                 else "Needs a floor area.", source=source)
         annual = band["rent_mid"] * size_m2 * 12
-        basis = f"OMI rent middle €{band['rent_mid']:.1f}/m²/month"
+        basis = (f"OMI rent middle €{band['rent_mid']:.1f}/m²/month"
+                 + (f" as published in {band.get('semester')}, NOT carried forward — "
+                    "the house price index measures purchases, not rents"
+                    if band.get("adjusted") else ""))
 
     yield_pct = annual / ask * 100
     # 2% is a bad Italian residential yield, 9% is an excellent one before
@@ -165,8 +175,9 @@ def liquidity(stats: dict[str, dict[str, Any]], weight: float = 10.0) -> Compone
     ntn, stock = stats.get("ntn"), stats.get("dwellings")
     if not ntn or ntn.get("value") is None:
         return Component("liquidity", "How often anything sells", None, weight,
-                         "No NTN transaction count loaded for this comune "
-                         "(Agenzia Entrate publishes it per comune, yearly).")
+                         "No transaction count loaded. The Agenzia publishes NTN per "
+                         "comune in the same reserved area as the OMI file — the "
+                         "quarterly figures it puts out openly are PDFs, not data.")
     if stock and stock.get("value"):
         rate = ntn["value"] / stock["value"] * 100
         return Component("liquidity", "How often anything sells", round(lerp(rate, 0.3, 2.5), 1),

@@ -63,6 +63,16 @@ layout, so the official file drops straight in on top of it.
 **Attribution (required):** `Agenzia Entrate — OMI`. Printed next to every band
 the app shows.
 
+**The transaction counts (NTN), and why the quarterly ones are not wired in.**
+The same reserved area carries *Volumi di compravendita* — NTN per comune, per
+year, from 2011 — which is what the "how often anything sells" check needs.
+The Agenzia also publishes quarterly statistics openly, with provincial detail
+and only a quarter in arrears (Q2 2026 was up when this was written), **but it
+publishes them as PDF reports, not as data**. Parsing a statistical PDF to get
+a number this project would then present as official is exactly the sort of
+fragile inference it refuses elsewhere, so the annual per-comune file from the
+login is the path of record. It arrives in the same trip as the quotations.
+
 **Limits to keep saying out loud.** A band is for a zone and a typology, not an
 appraisal of a building. Asking prices are not transaction prices. Trento,
 Bolzano and parts of Gorizia and Trieste run the *sistema tavolare* and their
@@ -106,6 +116,40 @@ scenario (roughly a 20–50 year return period), P2 the *media* (100–200 years
 For landslides the national reports use P3+P4 together, and so does this.
 
 ---
+
+## 2b. ISTAT — IPAB, the quarterly house price index
+
+**What it gives you.** The index of house prices actually paid, quarterly, by
+macro-area (Nord-ovest, Nord-est, Centro, Sud e Isole) and split new vs
+existing. Verified live 2026-09-13, no key and no login:
+
+```
+GET https://esploradati.istat.it/SDMXWS/rest/data/IT1,143_497_DF_DCSP_IPAB_1,1.0/ALL/
+    ?startPeriod=2015-Q1&format=csv
+```
+
+```bash
+./retire value hpi
+```
+
+**What it is used for — and this is the whole reason it is here.** OMI publishes
+twice a year; between releases the app is frozen at whichever semester was last
+imported. Existing-dwelling prices since 2018-Q4 are up **+11.3%** in Sud e
+Isole and **+21.9%** in the Nord-est, so reading a 2018 band as if it were
+current either invents a bargain or hides one depending on where in Italy you
+are standing. When the loaded band is older than the index, the band is carried
+forward by the index for its area and **every answer says so**: the factor, both
+quarters, the area, and the figures as originally published.
+
+Only the **sale** band is adjusted. IPAB measures purchases, not rents, so the
+rent band stays as published and the yield line says that out loud.
+
+The adjustment is a regional average applied to one zone, and a single comune
+diverges from its region. It is strictly better than treating an old band as
+current and strictly worse than importing the current semester — which removes
+it entirely.
+
+**Attribution:** `ISTAT — IPAB`.
 
 ## 3. ISTAT
 

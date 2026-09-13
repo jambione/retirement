@@ -67,7 +67,8 @@ def score(conn: sqlite3.Connection, *, lat: float | None = None, lng: float | No
     province = province or comune.get("prov", "")
 
     band = bands.band_for(conn, lat, lng, municipality=municipality or comune.get("name", ""),
-                          istat=comune_istat, typology=typology, condition=condition)
+                          istat=comune_istat, typology=typology, condition=condition,
+                          region=comune.get("region", ""))
     stats = store.stats_for(conn, comune_istat) if comune_istat else {}
 
     distances = None
