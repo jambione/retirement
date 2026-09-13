@@ -175,3 +175,62 @@ def test_agy_is_invoked_with_a_print_timeout_matching_the_call(monkeypatch):
     cmd = captured["cmd"]
     assert "--print-timeout" in cmd and "300s" in cmd
     assert "--output-format" in cmd and "json" in cmd
+
+
+# ── finding the binaries at all ────────────────────────────────────────────
+def test_an_absolute_pin_is_taken_as_given(tmp_path):
+    binary = tmp_path / "agy"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    assert ask.resolve_binary(str(binary)) == str(binary)
+
+
+def test_an_absolute_pin_that_is_not_executable_is_not_accepted(tmp_path):
+    binary = tmp_path / "agy"
+    binary.write_text("not executable")
+    assert ask.resolve_binary(str(binary)) is None
+
+
+def test_a_bare_name_is_looked_for_where_these_clis_actually_live(tmp_path, monkeypatch):
+    # npm/bun/Homebrew installs are invisible to an ssh or launchd PATH, which
+    # is what reported every backend as missing on a machine where all of them
+    # work from a Terminal.
+    nook = tmp_path / ".bun" / "bin"
+    nook.mkdir(parents=True)
+    binary = nook / "agy"
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+
+    monkeypatch.setattr(ask.shutil, "which", lambda _n: None)       # not on PATH
+    monkeypatch.setattr(ask, "CLI_DIRS", (str(nook),))
+    assert ask.resolve_binary("agy") == str(binary)
+
+
+def test_nvm_style_version_directories_are_searched_newest_first(tmp_path, monkeypatch):
+    for version in ("v18.0.0", "v22.1.0"):
+        d = tmp_path / ".nvm" / "versions" / "node" / version / "bin"
+        d.mkdir(parents=True)
+        (d / "agy").write_text("#!/bin/sh\n")
+        (d / "agy").chmod(0o755)
+
+    monkeypatch.setattr(ask.shutil, "which", lambda _n: None)
+    monkeypatch.setattr(ask, "CLI_DIRS", ())
+    monkeypatch.setattr(ask, "CLI_GLOBS", (str(tmp_path / ".nvm/versions/node/*/bin"),))
+    assert "v22.1.0" in ask.resolve_binary("agy")
+
+
+def test_a_binary_that_is_nowhere_is_reported_as_absent(monkeypatch):
+    monkeypatch.setattr(ask.shutil, "which", lambda _n: None)
+    monkeypatch.setattr(ask, "CLI_DIRS", ())
+    monkeypatch.setattr(ask, "CLI_GLOBS", ())
+    assert ask.resolve_binary("definitely-not-installed") is None
+
+
+def test_available_reports_where_each_backend_was_found(monkeypatch):
+    monkeypatch.setattr(ask, "resolve_binary",
+                        lambda name: "/opt/homebrew/bin/agy" if name == "agy" else None)
+    entries = {e["id"]: e for e in ask.available()}
+    assert entries["agy"]["ready"] is True
+    assert entries["agy"]["path"] == "/opt/homebrew/bin/agy"
+    assert entries["claude_cli"]["ready"] is False
+    assert entries["claude_cli"]["path"] is None

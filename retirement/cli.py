@@ -67,9 +67,10 @@ def cmd_doctor(args) -> int:
         if status["configured"] else "NOT configured (smtp_host / smtp_user / smtp_pass / digest_to)"
     ))
 
-    print("ask B      " + ", ".join(
-        f"{p['label']}{'' if p['ready'] else ' (missing)'}" for p in ask.available()
-    ))
+    for entry in ask.available():
+        mark = "✓" if entry["ready"] else "·"
+        where = entry.get("path") or ("" if entry["ready"] else "not found")
+        print(f"ai         {mark} {entry['label']:<18} {where}")
     print(f"           default: {ask.default_provider() or 'none available'}")
     note = ask.preference_note()
     if note:

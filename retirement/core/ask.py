@@ -18,6 +18,7 @@ Two rules the CLIs make easy to get wrong:
 """
 from __future__ import annotations
 
+import glob
 import json
 import os
 import shutil
@@ -31,6 +32,50 @@ from typing import Callable
 from retirement.core.config import env, project_root
 
 DEFAULT_TIMEOUT = 180.0
+
+# These CLIs are installed by npm, bun or Homebrew, and an ssh or launchd shell
+# sees almost none of that. PATH alone reported every backend as "missing" on a
+# machine where all of them work from a Terminal, so look where they actually
+# live as well.
+CLI_DIRS = (
+    "/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin",
+    "~/.local/bin", "~/bin", "~/.bun/bin", "~/.deno/bin",
+    "~/.npm-global/bin", "~/.volta/bin", "~/.yarn/bin",
+    "~/Library/pnpm", "~/.cargo/bin",
+)
+CLI_GLOBS = (
+    "~/.nvm/versions/node/*/bin",      # nvm is the usual home for these
+    "~/.local/share/fnm/node-versions/*/installation/bin",
+)
+
+
+def resolve_binary(name: str) -> str | None:
+    """Absolute path to a CLI, however it was installed.
+
+    An absolute name is taken as given -- that is how a pinned ASK_*_BIN wins,
+    and the only reliable answer on a machine whose PATH depends on which shell
+    asked.
+    """
+    if "/" in name:
+        path = Path(name).expanduser()
+        return str(path) if os.access(path, os.X_OK) else None
+
+    found = shutil.which(name)
+    if found:
+        return found
+
+    for directory in CLI_DIRS:
+        candidate = Path(directory).expanduser() / name
+        if os.access(candidate, os.X_OK):
+            return str(candidate)
+
+    for pattern in CLI_GLOBS:
+        base = Path(pattern).expanduser()
+        for directory in sorted(glob.glob(str(base)), reverse=True):   # newest first
+            candidate = Path(directory) / name
+            if os.access(candidate, os.X_OK):
+                return str(candidate)
+    return None
 
 
 @dataclass
@@ -100,7 +145,7 @@ def _run(cmd: list[str], timeout: float, env_overrides: dict[str, str] | None = 
 
 # ── backends ───────────────────────────────────────────────────────────────
 def _claude_cli(prompt: str, timeout: float) -> str:
-    binary = shutil.which(env("ASK_CLAUDE_BIN", "claude") or "claude")
+    binary = resolve_binary(env("ASK_CLAUDE_BIN", "claude") or "claude")
     return _run(
         [binary, "-p", prompt,
          "--model", env("ASK_CLAUDE_MODEL", "sonnet") or "sonnet",
@@ -122,7 +167,7 @@ AGY_LOGGED_OUT = (
 
 
 def _agy_cli(prompt: str, timeout: float) -> str:
-    binary = shutil.which(env("ASK_AGY_BIN", "agy") or "agy")
+    binary = resolve_binary(env("ASK_AGY_BIN", "agy") or "agy")
     raw = _run(
         [binary, "-p", prompt,
          "--output-format", "json",
@@ -163,7 +208,7 @@ def _unwrap_agy(raw: str) -> str:
 
 
 def _grok_cli(prompt: str, timeout: float) -> str:
-    binary = shutil.which(env("ASK_GROK_BIN", "grok") or "grok")
+    binary = resolve_binary(env("ASK_GROK_BIN", "grok") or "grok")
     handle, tmp = tempfile.mkstemp(prefix="ask_b_", suffix=".txt")
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as fh:
@@ -197,7 +242,13 @@ def _anthropic_api(prompt: str, timeout: float) -> str:
 
 
 def _has(name_env: str, default: str) -> Callable[[], bool]:
-    return lambda: bool(shutil.which(env(name_env, default) or default))
+    return lambda: bool(resolve_binary(env(name_env, default) or default))
+
+
+def where(name_env: str, default: str) -> str | None:
+    """Where a backend's binary was found — for doctor, so 'missing' can be
+    told apart from 'installed somewhere this shell cannot see'."""
+    return resolve_binary(env(name_env, default) or default)
 
 
 # Order is preference when ASK_DEFAULT_PROVIDER is unset. Antigravity first:
@@ -215,11 +266,19 @@ PROVIDERS: list[Provider] = [
 ]
 
 
+BINARIES = {"agy": ("ASK_AGY_BIN", "agy"), "claude_cli": ("ASK_CLAUDE_BIN", "claude"),
+            "grok": ("ASK_GROK_BIN", "grok")}
+
+
 def available() -> list[dict]:
-    return [
-        {"id": p.id, "label": p.label, "detail": p.detail, "ready": p.ready()}
-        for p in PROVIDERS
-    ]
+    out = []
+    for provider in PROVIDERS:
+        entry = {"id": provider.id, "label": provider.label,
+                 "detail": provider.detail, "ready": provider.ready()}
+        if provider.id in BINARIES:
+            entry["path"] = where(*BINARIES[provider.id])
+        out.append(entry)
+    return out
 
 
 def default_provider() -> str | None:

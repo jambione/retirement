@@ -200,29 +200,55 @@ echo "    Digests go to its notify_to unless DIGEST_TO is set in $ENV_FILE."
 REMOTE
 
 # ── 3.6 ai backend ─────────────────────────────────────────────────────────
+# Run this through a LOGIN shell. agy, claude and grok are installed by npm or
+# Homebrew, and a plain `ssh host command` sees almost none of that -- the last
+# deploy reported every backend missing on a machine where they all work from a
+# Terminal. The LaunchAgents use `bash -lc` for exactly this reason, so checking
+# any other way measures the wrong shell.
 say "AI"
-ssh_mini "MINI_REPO='$MINI_REPO' bash -s" <<'REMOTE'
+ssh_mini "MINI_REPO='$MINI_REPO' bash -l -s" <<'REMOTE'
 set -uo pipefail
-PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 ENV_FILE="$MINI_REPO/.env"
 [ -f "$ENV_FILE" ] || cp "$MINI_REPO/.env.example" "$ENV_FILE"
 
-if ! grep -q '^ASK_DEFAULT_PROVIDER=' "$ENV_FILE"; then
-  printf '\nASK_DEFAULT_PROVIDER=agy\n' >> "$ENV_FILE"
-  echo "  · pinned ASK_DEFAULT_PROVIDER=agy"
-fi
-WANT="$(grep '^ASK_DEFAULT_PROVIDER=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
-echo "  · configured backend: ${WANT:-<unset>}"
+# An .env copied from the example has `ASK_DEFAULT_PROVIDER=` with NOTHING after
+# it. A plain grep for the key finds that line and concludes it is configured,
+# which is how the last deploy left the backend unset while reporting success.
+# Treat an empty value as absent.
+set_env() {
+  key="$1"; val="$2"
+  cur="$(grep "^${key}=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+  if [ -n "$cur" ]; then echo "  · $key already set ($cur)"; return 0; fi
+  grep -v "^${key}=" "$ENV_FILE" > "$ENV_FILE.tmp" 2>/dev/null && mv "$ENV_FILE.tmp" "$ENV_FILE"
+  printf '%s=%s\n' "$key" "$val" >> "$ENV_FILE"
+  echo "  ✓ $key=$val"
+}
 
-if command -v agy >/dev/null 2>&1; then
-  echo "  ✓ agy found at $(command -v agy)"
+# Pin ABSOLUTE paths. Then it does not matter which shell asks later -- launchd,
+# ssh, or you -- they all find the same binary.
+FOUND_AGY=""
+for entry in "agy:ASK_AGY_BIN" "claude:ASK_CLAUDE_BIN" "grok:ASK_GROK_BIN"; do
+  name="${entry%%:*}"; var="${entry##*:}"
+  path="$(command -v "$name" 2>/dev/null || true)"
+  if [ -n "$path" ]; then
+    set_env "$var" "$path"
+    [ "$name" = "agy" ] && FOUND_AGY="$path"
+  else
+    echo "  · $name not on the login PATH"
+  fi
+done
+
+if [ -n "$FOUND_AGY" ]; then
+  set_env ASK_DEFAULT_PROVIDER agy
 else
-  echo "  ✗ agy is NOT on this machine's PATH."
-  echo "    Scoring and the board summary will fall back to whatever else is"
-  echo "    installed, which is not the subscription you asked for."
+  echo "  ✗ agy is not installed for this user."
+  echo "    Install it, then rerun. Until then scoring falls back to whatever"
+  echo "    else is present, which is not the subscription you asked for."
 fi
 REMOTE
-ssh_mini "cd '$MINI_REPO' && ./retire doctor 2>/dev/null | grep -E '^(ask B|scoring)|^ +(!|default)'" || true
+
+# Report what the SERVICE will see, not what an ssh command sees.
+ssh_mini "bash -lc \"cd '$MINI_REPO' && ./retire doctor\" 2>/dev/null | grep -E '^(ai|scoring)|^ +(!|default)'" || true
 
 # ── 4. health ──────────────────────────────────────────────────────────────
 say "Health"

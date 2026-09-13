@@ -130,6 +130,13 @@ All three CLIs are agentic coding tools pointed at a working directory, so each
 is invoked here with its file and shell tools explicitly disallowed and its cwd
 set to `var/ask/` — "summarise this shortlist" must never turn into a commit.
 
+If a backend shows as *not found* while it works fine from your Terminal, that
+is PATH, not installation: npm, bun and Homebrew put these binaries where an
+ssh or launchd shell never looks. The deploy resolves each one through a login
+shell and pins the **absolute** path into `.env` (`ASK_AGY_BIN=...`), after
+which it does not matter which shell asks. `./retire doctor` prints where each
+was found.
+
 If `agy` reports itself logged out, run `agy` with no arguments from a Terminal
 **on the mini** — its credential lives in the console user's login Keychain,
 which an ssh session cannot read. That is the same problem the trading desk
