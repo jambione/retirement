@@ -162,6 +162,13 @@ def one_listing(listing_id: str, rescore: bool = False):
                          "attribution": ATTRIBUTION})
 
 
+@router.get("/place")
+def place(q: str = "", istat: str = ""):
+    """What is on file for one town. The page calls this the moment a town is
+    picked, so you know what can be answered before you ask."""
+    return JSONResponse(store.place_summary(_conn(), query=q, istat=istat))
+
+
 @router.get("/ref/{reference}")
 def by_reference(reference: str):
     """Look a property up by its reference — CIS1001 — or by the portal's own

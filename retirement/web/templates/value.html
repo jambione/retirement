@@ -1,37 +1,53 @@
 {% extends "base.html" %}
-{% block title %}Value — Retirement{% endblock %}
+{% block title %}Is it worth it? — Retirement{% endblock %}
 
 {% block style %}
-.cov{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
-.cov div span{display:block}
-.cov .k{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
-.cov .v{font-family:var(--mono);font-size:19px;color:var(--ink);margin-top:4px}
-.cov .n{font-size:12px;color:var(--dim);margin-top:2px}
-.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:14px;align-items:start}
+.lede{font-size:16px;color:var(--ink-2);line-height:1.6;max-width:62ch;margin:10px 0 0}
+.two{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:14px;align-items:start}
 @media (max-width:980px){.two{grid-template-columns:1fr}}
-.field{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
-.result{margin-top:16px;border-top:1px solid var(--line);padding-top:16px}
-.headline{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-.headline .num{font-family:var(--mono);font-size:38px;line-height:1;color:var(--accent)}
-.headline .band{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-.comp{display:grid;grid-template-columns:minmax(0,1fr) 52px;gap:4px 12px;align-items:baseline;
-  padding:11px 0;border-bottom:1px solid var(--line)}
-.comp:last-child{border-bottom:none}
-.comp .lab{font-size:13.5px;color:var(--ink-2)}
-.comp .sc{font-family:var(--mono);font-size:13px;text-align:right;color:var(--ink)}
-.comp .sc.none{color:var(--dim)}
-.comp .bar{grid-column:1/-1;height:2px;background:var(--line-2);border-radius:2px;overflow:hidden}
-.comp .bar i{display:block;height:2px;background:var(--accent)}
-.comp .det{grid-column:1/-1;font-size:12.5px;color:var(--muted);line-height:1.5}
-.comp .src{grid-column:1/-1;font-size:11.5px;color:var(--dim)}
-/* The refusal. It gets more room than the score would have, because "we
-   cannot say" is only useful if it also says what would change that. */
-.refline{margin:10px 0 0;font-size:12.5px;color:var(--muted)}
-.refline b{font-family:var(--mono);font-size:13.5px;color:var(--teal);letter-spacing:.04em}
-.lookup{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
-.lookup .hint{display:block;margin-top:7px;font-size:12px;color:var(--dim)}
-.reftag{font-family:var(--mono);font-size:12px;color:var(--teal)}
-.withheld{border:1px solid var(--line-2);border-left:2px solid var(--warn);
+.ask3{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,.8fr);gap:10px}
+@media (max-width:560px){.ask3{grid-template-columns:1fr 1fr}}
+/* What we hold for the town you just typed, before you ask anything about it. */
+.place{margin-top:10px;font-size:12.5px;line-height:1.55;color:var(--muted);min-height:18px}
+.place b{color:var(--ink-2);font-weight:400}
+.place .yes{color:var(--good)} .place .no{color:var(--warn)}
+.place .miss{color:var(--dim)}
+.more{margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+.more > summary{cursor:pointer;font-size:13px;color:var(--muted);list-style:none}
+.more > summary::-webkit-details-marker{display:none}
+.more > summary::before{content:"+ ";color:var(--accent)}
+.more[open] > summary::before{content:"– "}
+.more > summary:hover{color:var(--ink-2)}
+.more .field{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:12px}
+.answer{margin-top:18px;border-top:1px solid var(--line);padding-top:18px}
+.verdict{font-family:var(--display);font-weight:600;font-size:19px;line-height:1.4;
+  letter-spacing:-.01em;color:var(--ink);text-wrap:balance;margin:0}
+.verdict .up{color:var(--warn)} .verdict .down{color:var(--good)}
+.readout{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:12px}
+.readout .num{font-family:var(--mono);font-size:34px;line-height:1;color:var(--accent)}
+.readout .of{font-size:12px;color:var(--dim)}
+.readout .band{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.checks{margin-top:16px}
+.check{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:3px 10px;
+  padding:10px 0;border-bottom:1px solid var(--line);align-items:baseline}
+.check:last-child{border-bottom:none}
+.check .tick{color:var(--good);font-family:var(--mono);font-size:12px}
+.check .tick.off{color:var(--dim)}
+.check .lab{font-size:14px;color:var(--ink-2)}
+.check .sc{font-family:var(--mono);font-size:13px;color:var(--ink);text-align:right}
+.check .sc.off{color:var(--dim);font-size:12px}
+.check .det{grid-column:2/-1;font-size:12.5px;color:var(--muted);line-height:1.5}
+.check .src{grid-column:2/-1;font-size:11px;color:var(--dim)}
+.refline{margin:14px 0 0;font-size:12.5px;color:var(--muted)}
+.refline b{font-family:var(--mono);font-size:15px;color:var(--teal);letter-spacing:.06em}
+.smallprint{margin-top:14px}
+.smallprint summary{cursor:pointer;font-size:12.5px;color:var(--dim);list-style:none}
+.smallprint summary::-webkit-details-marker{display:none}
+.smallprint summary::before{content:"> "}
+.smallprint[open] summary::before{content:"v "}
+.smallprint ul{margin:10px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:7px;
+  font-size:12.5px;color:var(--muted);line-height:1.5}
+.withheld{margin-top:18px;border:1px solid var(--line-2);border-left:2px solid var(--warn);
   border-radius:var(--r-sm);padding:16px 18px;background:var(--surface-2)}
 .withheld h3{font-family:var(--display);font-weight:600;font-size:17px;letter-spacing:-.01em}
 .withheld p{margin:8px 0 0;font-size:13.5px;color:var(--ink-2);line-height:1.55}
@@ -39,13 +55,19 @@
   font-size:13px;color:var(--muted);line-height:1.5}
 .withheld .arith{font-size:12.5px;color:var(--dim);margin-top:12px;
   border-top:1px solid var(--line);padding-top:10px}
-.caveat{font-size:12.5px;color:var(--muted);line-height:1.55;padding-left:14px;position:relative}
-.caveat::before{content:"—";position:absolute;left:0;color:var(--dim)}
+.cov{display:flex;flex-direction:column;gap:9px;margin-top:12px}
+.cov div{display:flex;align-items:baseline;gap:8px;font-size:13px;color:var(--muted);line-height:1.5}
+.cov .v{font-family:var(--mono);font-size:14px;color:var(--ink);flex:0 0 auto}
+.cov .v.off{color:var(--dim)}
+.lookup{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}
+.lookup .hint{display:block;margin-top:7px;font-size:12px;color:var(--dim)}
 table.vals{width:100%;border-collapse:collapse;font-size:13.5px}
 table.vals th{text-align:left;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
   color:var(--faint);font-weight:400;padding:0 0 10px;border-bottom:1px solid var(--line)}
 table.vals td{padding:11px 0;border-bottom:1px solid var(--line);color:var(--ink-2)}
 table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
+table.vals tr:last-child td{border-bottom:none}
+.reftag{font-family:var(--mono);font-size:12px;color:var(--teal)}
 .attrib{font-size:12px;color:var(--dim);line-height:1.7;margin-top:26px;
   border-top:1px solid var(--line);padding-top:14px}
 {% endblock %}
@@ -57,228 +79,295 @@ table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
   <button type="button" class="askb" data-scope="value"
           title="Ask B about the official data" aria-label="Ask B about the official data">B</button>
 </div>
-<h1 class="display" style="font-size:27px;letter-spacing:-.015em;margin:6px 0 14px">
-  Against the official record</h1>
+<h1 class="display" style="font-size:27px;letter-spacing:-.015em;margin:6px 0 0">
+  Is this price fair?</h1>
+<p class="lede">
+  A town, a price and a size — the three things every listing tells you. This compares them
+  with what the Agenzia delle Entrate records that part of town as being worth, rather than
+  with whatever else happens to be for sale this week.
+</p>
 
-<div class="card">
-  <span class="eyebrow">What is loaded — dati caricati</span>
-  <div class="cov" style="margin-top:14px">
-    <div><span class="k">OMI semester</span>
-      <span class="v">{{ coverage.semester or "—" }}</span>
-      <span class="n">Agenzia Entrate</span></div>
-    <div><span class="k">Quotations</span>
-      <span class="v">{{ "{:,}".format(coverage.omi_rows) }}</span>
-      <span class="n">{{ coverage.omi_comuni }} comuni · {{ "{:,}".format(coverage.omi_with_rent) }} with rent</span></div>
-    <div><span class="k">Zone polygons</span>
-      <span class="v">{{ "{:,}".format(coverage.zones) }}</span>
-      <span class="n">for point-in-zone matching</span></div>
-    <div><span class="k">Comune figures</span>
-      <span class="v">{{ "{:,}".format(coverage.stats) }}</span>
-      <span class="n">{{ coverage.stat_metrics|length }} indicators</span></div>
-    <div><span class="k">Scored</span>
-      <span class="v">{{ "{:,}".format(coverage.scored) }}</span>
-      <span class="n">listings held</span></div>
-  </div>
-  {% if not coverage.omi_rows %}
-    <p style="margin:16px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6">
-      No OMI quotations imported yet, so nothing can be scored on price. Put the
-      <span class="mono">QI_*_VALORI_*.csv</span> in <span class="mono">data/omi/</span> and run
-      <span class="mono">./retire value omi --scan</span> —
-      <a href="https://github.com/jambione/retirement/blob/main/docs/DATA_SOURCES.md">DATA_SOURCES.md</a>
-      has the click-path. Hazard and census figures need no download:
-      <span class="mono">./retire value ispra</span>.
-    </p>
-  {% endif %}
-</div>
-
-<div class="two" style="margin-top:14px">
+<div class="two" style="margin-top:18px">
 
   <div class="card">
-    <span class="eyebrow">Score one property — valuta un immobile</span>
-    <p style="margin:10px 0 16px;font-size:13.5px;color:var(--muted);line-height:1.55">
-      A pin and a price is enough. Everything else narrows the band it is judged against.
-    </p>
-    <div class="field">
-      <div><label for="v-lat">Lat</label><input id="v-lat" value="40.7430" inputmode="decimal"></div>
-      <div><label for="v-lng">Lon</label><input id="v-lng" value="17.4260" inputmode="decimal"></div>
+    <div class="ask3">
+      <div>
+        <label for="v-comune">Town — comune</label>
+        <input id="v-comune" list="comuni" placeholder="start typing…" autocomplete="off">
+        <datalist id="comuni">
+          {% for name in comune_names %}<option value="{{ name }}"></option>{% endfor %}
+        </datalist>
+      </div>
+      <div><label for="v-price">Asking price EUR</label>
+        <input id="v-price" inputmode="numeric" placeholder="180000"></div>
+      <div><label for="v-size">Size m2</label>
+        <input id="v-size" inputmode="numeric" placeholder="120"></div>
     </div>
-    <div class="field" style="margin-top:10px">
-      <div><label for="v-price">Price €</label><input id="v-price" value="180000" inputmode="numeric"></div>
-      <div><label for="v-size">Size m²</label><input id="v-size" value="120" inputmode="numeric"></div>
-    </div>
-    <div class="field" style="margin-top:10px">
-      <div><label for="v-typ">Typology</label>
-        <select id="v-typ">
-          <option value="homes">Abitazione civile</option>
-          <option value="villa">Villa / villino</option>
-          <option value="economic">Tipo economico</option>
-          <option value="signorili">Signorile</option>
-        </select></div>
-      <div><label for="v-cond">Condition</label>
-        <select id="v-cond">
-          <option value="good">Normale</option>
-          <option value="newdevelopment">Ottimo / nuovo</option>
-          <option value="renew">Scadente / da ristrutturare</option>
-        </select></div>
-    </div>
-    <div class="field" style="margin-top:10px">
-      <div><label for="v-comune">Comune (if no pin)</label><input id="v-comune" placeholder="Cisternino"></div>
-      <div><label for="v-rent">Asking rent €/month</label><input id="v-rent" placeholder="optional" inputmode="numeric"></div>
-    </div>
-    <div class="row" style="margin-top:14px">
+    <p class="place" id="v-place">Pick a town and this says what is on file for it.</p>
+
+    <details class="more">
+      <summary>More about the property — if you know it</summary>
+      <div class="field">
+        <div><label for="v-typ">Type</label>
+          <select id="v-typ">
+            <option value="homes">Abitazione civile — ordinary house or flat</option>
+            <option value="villa">Villa, villino, trullo</option>
+            <option value="economic">Tipo economico — modest build</option>
+            <option value="signorili">Signorile — high end</option>
+          </select></div>
+        <div><label for="v-cond">Condition</label>
+          <select id="v-cond">
+            <option value="good">Normale — liveable</option>
+            <option value="newdevelopment">Ottimo — new or restored</option>
+            <option value="renew">Scadente — needs work</option>
+          </select></div>
+      </div>
+      <div class="field">
+        <div><label for="v-rent">Let for, EUR / month</label>
+          <input id="v-rent" inputmode="numeric" placeholder="blank = we estimate"></div>
+        <div><label for="v-lat">Latitude</label>
+          <input id="v-lat" inputmode="decimal" placeholder="40.7430"></div>
+        <div><label for="v-lng">Longitude</label>
+          <input id="v-lng" inputmode="decimal" placeholder="17.4260"></div>
+      </div>
+      <p style="margin:10px 0 0;font-size:12px;color:var(--dim);line-height:1.5">
+        Coordinates pin it to one OMI zone. Without them the comparison is the whole comune —
+        a wider band, and the answer says so.
+      </p>
       <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;
-                    font-size:12.5px;color:var(--muted);margin:0">
-        <input type="checkbox" id="v-osm" style="width:auto"> look up amenities (OpenStreetMap)
+                    font-size:12.5px;color:var(--muted);margin:12px 0 0">
+        <input type="checkbox" id="v-osm" style="width:auto"> also check what is nearby (OpenStreetMap)
       </label>
+    </details>
+
+    <div class="row" style="margin-top:14px">
       <span class="grow"></span>
-      <button class="primary" id="v-go">Score it</button>
+      <button class="primary" id="v-go">Check this price</button>
     </div>
 
     <div class="lookup">
-      <label for="v-ref">Or look one up — cerca per riferimento</label>
+      <label for="v-ref">Already checked one? Look it up</label>
       <div class="row" style="margin-top:0">
         <input id="v-ref" placeholder="CIS1001" style="flex-grow:1;text-transform:uppercase">
         <button class="tiny" id="v-find">Find</button>
       </div>
-      <span class="hint">A reference, a portal's own code, or part of a listing URL.</span>
+      <span class="hint">A reference of ours, an agency's own code, or part of a listing URL.</span>
     </div>
 
     <div id="v-out"></div>
   </div>
 
-  <div class="card">
-    <span class="eyebrow">Scored listings — immobili valutati</span>
-    {% if scored %}
-      <table class="vals" style="margin-top:14px">
-        <thead><tr><th>Ref</th><th>Property</th><th style="text-align:right">€</th>
-          <th style="text-align:right">€/m²</th><th style="text-align:right">Score</th></tr></thead>
-        <tbody>
-        {% for row in scored %}
-          <tr>
-            <td class="reftag">{{ row.ref or "—" }}</td>
-            <td>
-              {% if row.url %}<a href="{{ row.url }}" target="_blank" rel="noopener">{{ row.title or row.listing_id }}</a>
-              {% else %}{{ row.title or row.listing_id }}{% endif %}
-              <span style="display:block;font-size:12px;color:var(--dim)">
-                {{ row.municipality }}{% if row.province %} ({{ row.province }}){% endif %}
-                {% if row.breakdown.confidence is not none %}
-                  · {{ (row.breakdown.confidence * 100)|round|int }}% of weight had data
-                {% endif %}
-              </span>
-            </td>
-            <td class="n">{{ "{:,.0f}".format(row.price) if row.price else "—" }}</td>
-            <td class="n">{{ "{:,.0f}".format(row.price / row.size_sqm) if row.price and row.size_sqm else "—" }}</td>
-            <td class="n" style="color:var(--accent)"
-                title="{{ row.breakdown.why_not or '' }}">{{ "%.1f"|format(row.score) if row.score is not none else "not valued" }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p style="margin:12px 0 18px;font-size:13.5px;color:var(--muted);line-height:1.6">
-        Nothing scored yet. Upload a CSV or GeoJSON of listings — columns
-        <span class="mono">url, title, price, size_m2, lat, lon, comune, province,
-        typology, condition, rent_month</span> — or score a single property on the left.
-      </p>
-    {% endif %}
-
-    <form id="v-upload" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
-      <label for="v-file">Upload listings (CSV or GeoJSON)</label>
-      <input type="file" id="v-file" accept=".csv,.geojson,.json">
-      <div class="row" style="margin-top:10px">
-        <span class="grow" id="v-upload-note" style="font-size:12.5px;color:var(--dim)">
-          Scored on upload, against whatever data is loaded above.</span>
-        <button class="tiny" type="submit">Upload &amp; score</button>
+  <div>
+    <div class="card">
+      <span class="eyebrow">Where this can answer — copertura</span>
+      <div class="cov">
+        <div><span class="v {% if not coverage.omi_rows %}off{% endif %}">{{ "{:,}".format(coverage.omi_comuni) }}</span>
+          <span>towns with official values{% if coverage.semester %}, semester {{ coverage.semester }}{% endif %}
+            {%- if coverage.omi_provs %} — {{ coverage.omi_provs }} provinces{% endif %}</span></div>
+        <div><span class="v {% if not coverage.stats %}off{% endif %}">{{ "{:,}".format(coverage.stats_comuni) }}</span>
+          <span>towns with flood, landslide and census figures
+            {%- if coverage.stats_provs %} — {{ coverage.stats_provs|join(', ') }}{% endif %}</span></div>
+        <div><span class="v {% if not coverage.zones %}off{% endif %}">{{ "{:,}".format(coverage.zones) }}</span>
+          <span>zone outlines, for pinning a price to one part of a town</span></div>
+        <div><span class="v">{{ "{:,}".format(coverage.scored) }}</span>
+          <span>prices checked so far</span></div>
       </div>
-    </form>
+      {% if not coverage.omi_rows %}
+        <p style="margin:14px 0 0;font-size:13px;color:var(--muted);line-height:1.6">
+          No official values loaded, so prices cannot be checked anywhere yet — only towns can.
+          Put the <span class="mono">QI_*_VALORI_*.csv</span> in <span class="mono">data/omi/</span>
+          and run <span class="mono">./retire value omi --scan</span>.
+        </p>
+      {% elif coverage.stats_provs and coverage.stats_comuni < coverage.omi_comuni %}
+        <p style="margin:14px 0 0;font-size:12.5px;color:var(--dim);line-height:1.6">
+          Prices can be checked anywhere in the {{ coverage.omi_provs }} provinces above. The town
+          figures — which carry the demand and hazard checks — are loaded only for
+          {{ coverage.stats_provs|join(', ') }}; elsewhere those two checks come back "not checked".
+          <span class="mono">./retire value ispra --prov &lt;code&gt; --stats</span> adds a province.
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <span class="eyebrow">Checked so far — controllati</span>
+      {% if scored %}
+        <table class="vals" style="margin-top:14px">
+          <thead><tr><th>Ref</th><th>Property</th>
+            <th style="text-align:right">EUR/m2</th><th style="text-align:right">Score</th></tr></thead>
+          <tbody>
+          {% for row in scored %}
+            <tr>
+              <td class="reftag">{{ row.ref or "—" }}</td>
+              <td>
+                {% if row.url %}<a href="{{ row.url }}" target="_blank" rel="noopener">{{ row.title }}</a>
+                {% else %}{{ row.title }}{% endif %}
+                <span style="display:block;font-size:12px;color:var(--dim)">
+                  {{ row.municipality }}{% if row.price %} · €{{ '{:,.0f}'.format(row.price)|replace(',','.') }}{% endif %}
+                </span>
+              </td>
+              <td class="n">{{ "{:,.0f}".format(row.price / row.size_sqm) if row.price and row.size_sqm else "—" }}</td>
+              <td class="n" style="color:var(--accent)"
+                  title="{{ row.breakdown.why_not or '' }}">
+                {{ "%.0f"|format(row.score) if row.score is not none else "—" }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p style="margin:12px 0 0;font-size:13.5px;color:var(--muted);line-height:1.6">
+          Nothing checked yet. Every price you check gets a reference like
+          <span class="mono">CIS1001</span> and appears here.
+        </p>
+      {% endif %}
+
+      <form id="v-upload" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
+        <label for="v-file">Check a whole list at once (CSV or GeoJSON)</label>
+        <input type="file" id="v-file" accept=".csv,.geojson,.json">
+        <div class="row" style="margin-top:10px">
+          <span class="grow" id="v-upload-note" style="font-size:12.5px;color:var(--dim)">
+            Columns: url, title, price, size_m2, lat, lon, comune, province.</span>
+          <button class="tiny" type="submit">Upload</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 
 <p class="attrib">
   Sources — fonti: <b>Agenzia Entrate — OMI</b> (quotazioni immobiliari; bands, not appraisals) ·
   <b>ISPRA — IdroGEO</b> (pericolosità frane e alluvioni, CC-BY 4.0) ·
-  <b>ISTAT</b> (comuni, popolazione, turismo) ·
-  <b>MEF — Dipartimento delle Finanze</b> (redditi IRPEF comunali) ·
-  <b>DPC / INGV</b> (classificazione sismica) ·
-  <b>© OpenStreetMap contributors</b> (ODbL).
-  A component with no data behind it is reported as <i>no data</i> and its weight is
-  redistributed — it is never scored as zero.
+  <b>ISTAT</b> · <b>MEF — Dipartimento delle Finanze</b> ·
+  <b>DPC / INGV</b> · <b>© OpenStreetMap contributors</b> (ODbL).
+  A check with no data behind it is reported as not done, and never scored as zero.
 </p>
 
 <script>
 (function () {
   var out = document.getElementById('v-out');
+  var placeLine = document.getElementById('v-place');
 
   function num(id) {
     var raw = (document.getElementById(id).value || '').replace(/[^0-9.\-]/g, '');
     return raw === '' ? null : parseFloat(raw);
   }
+  function euro(n) { return '€' + Math.round(n).toLocaleString('en-GB').replace(/,/g, '.'); }
 
-  function bar(score) {
-    if (score === null || score === undefined) return '';
-    return '<span class="bar"><i style="width:' + Math.max(0, Math.min(100, score)) + '%"></i></span>';
+  /* ── what is on file for the town you just picked ──────────────────────
+     Shown before the question is asked, so an empty answer later is never a
+     surprise and is never mistaken for a bad one. */
+  var placeTimer = null;
+  function describePlace() {
+    var town = (document.getElementById('v-comune').value || '').trim();
+    if (!town) { placeLine.innerHTML = 'Pick a town and this says what is on file for it.'; return; }
+    fetch('/api/value/place?q=' + encodeURIComponent(town))
+      .then(function (r) { return r.json(); })
+      .then(function (p) {
+        if (!p.found) {
+          var hint = (p.did_you_mean && p.did_you_mean.length)
+            ? ' Did you mean ' + p.did_you_mean.slice(0, 4).join(', ') + '?'
+            : ' No official values and no figures on file for it.';
+          placeLine.innerHTML = '<span class="no">Not on file:</span> ' + town + '.' + hint;
+          return;
+        }
+        var bits = [];
+        bits.push(p.omi.zones
+          ? '<span class="yes">official values</span> for ' + p.omi.zones +
+            ' zone' + (p.omi.zones === 1 ? '' : 's') +
+            (p.omi.semester ? ' (' + p.omi.semester + ')' : '') +
+            (p.omi.rent ? ', rent included' : ', no rent band')
+          : '<span class="miss">no official values</span>');
+        bits.push(p.stats.count
+          ? '<span class="yes">town figures</span> (' + p.stats.count + ')'
+          : '<span class="miss">no town figures</span>');
+        bits.push(p.polygons
+          ? '<span class="yes">zone outlines</span>'
+          : '<span class="miss">no zone outlines</span>');
+        placeLine.innerHTML = '<b>' + p.name + (p.prov ? ' (' + p.prov + ')' : '') + '</b> — ' +
+                              bits.join(' · ') + '.';
+      })
+      .catch(function () { placeLine.textContent = ''; });
+  }
+  document.getElementById('v-comune').addEventListener('input', function () {
+    clearTimeout(placeTimer);
+    placeTimer = setTimeout(describePlace, 350);
+  });
+  document.getElementById('v-comune').addEventListener('change', describePlace);
+
+  /* ── the answer ───────────────────────────────────────────────────────── */
+  function headline(data) {
+    var price = (data.components || []).filter(function (c) { return c.key === 'price'; })[0];
+    var town = (data.comune && data.comune.name) || 'this town';
+    if (!price || price.score === null || !price.value) {
+      return 'Checked what we can about ' + town + '.';
+    }
+    var v = price.value, over = v.discount_pct < 0;
+    return euro(v.per_sqm) + '/m² asked — <span class="' + (over ? 'up' : 'down') + '">' +
+           Math.abs(Math.round(v.discount_pct)) + '% ' + (over ? 'above' : 'below') +
+           '</span> what the official record puts on this part of ' + town +
+           ' (' + euro(v.omi_min) + '–' + euro(v.omi_max) + '/m²).';
+  }
+
+  function checks(data) {
+    var html = '<div class="checks">';
+    (data.components || []).concat(data.risk ? [data.risk] : []).forEach(function (c) {
+      var done = c.score !== null && c.score !== undefined;
+      var isRisk = c.key === 'risk';
+      html += '<div class="check">' +
+              '<span class="tick' + (done ? '' : ' off') + '">' + (done ? '✓' : '—') + '</span>' +
+              '<span class="lab">' + c.label + '</span>' +
+              '<span class="sc' + (done ? '' : ' off') + '">' +
+              (done ? (isRisk ? '−' + c.score.toFixed(0) : c.score.toFixed(0)) : 'not checked') +
+              '</span>' +
+              '<span class="det">' + (c.detail || '') + '</span>' +
+              (c.source ? '<span class="src">' + c.source + '</span>' : '') +
+              '</div>';
+    });
+    return html + '</div>';
   }
 
   function render(data) {
-    if (data.error) { out.innerHTML = '<div class="result ask-err">' + data.error + '</div>'; return; }
-    var html = '<div class="result">';
+    if (data.error) { out.innerHTML = '<div class="answer ask-err">' + data.error + '</div>'; return; }
+    var html = '<div class="answer">';
     if (data.score === null) {
-      html += '<div class="withheld"><h3>Not enough official data to value this</h3>' +
-              '<p>' + (data.why_not || 'Nothing could be scored for this location.') + '</p>';
+      html += '<div class="withheld"><h3>Not enough official data to call this</h3>' +
+              '<p>' + (data.why_not || 'Nothing could be checked for this location.') + '</p>';
       if (data.needs && data.needs.length) {
         html += '<ul>' + data.needs.map(function (n) { return '<li>' + n + '</li>'; }).join('') + '</ul>';
       }
       if (data.partial_score !== null && data.partial_score !== undefined) {
         html += '<p class="arith">The arithmetic over what did load comes to ' +
-                data.partial_score.toFixed(1) + ' at ' + Math.round(data.confidence * 100) +
-                '% confidence. It is shown here and nowhere else, because a number built ' +
-                'on this much data is not a verdict about a house.</p>';
+                data.partial_score.toFixed(0) + '. It is shown here and nowhere else, because ' +
+                'a number built on this much data is not a verdict about a house.</p>';
       }
       html += '</div>';
     } else {
-      html += '<div class="headline"><span class="num">' + data.score.toFixed(1) + '</span>' +
+      html += '<p class="verdict">' + headline(data) + '</p>' +
+              '<div class="readout"><span class="num">' + data.score.toFixed(0) + '</span>' +
+              '<span class="of">out of 100</span>' +
               '<span class="band">' + data.band + '</span>' +
-              '<span style="font-size:12.5px;color:var(--dim)">confidence ' +
-              Math.round(data.confidence * 100) + '% · risk −' + data.risk_penalty + '</span></div>';
+              '<span class="of">· ' + Math.round(data.confidence * 100) +
+              '% of the checks had data</span></div>';
     }
+    html += checks(data);
     if (data.ref) {
-      html += '<p class="refline">Reference <b>' + data.ref + '</b>' +
-              ' — quote it to find this again, here or on the phone.</p>';
+      html += '<p class="refline">Reference <b>' + data.ref + '</b> — quote it to find this again.</p>';
     }
-    if (data.comune && data.comune.name) {
-      html += '<p style="font-size:12.5px;color:var(--dim);margin:8px 0 0">' +
-              data.comune.name + (data.comune.prov ? ' (' + data.comune.prov + ')' : '') +
-              (data.omi_band && data.omi_band.grain ? ' · band at ' + data.omi_band.grain + ' grain' : '') +
-              '</p>';
+    if (data.caveats && data.caveats.length) {
+      html += '<details class="smallprint"><summary>What this cannot tell you</summary><ul>' +
+              data.caveats.map(function (c) { return '<li>' + c + '</li>'; }).join('') +
+              '</ul></details>';
     }
-    html += '<div style="margin-top:14px">';
-    (data.components || []).forEach(function (c) {
-      html += '<div class="comp"><span class="lab">' + c.label + '</span>' +
-              '<span class="sc' + (c.score === null ? ' none' : '') + '">' +
-              (c.score === null ? 'no data' : c.score.toFixed(1)) + '</span>' +
-              bar(c.score) +
-              '<span class="det">' + (c.detail || '') + '</span>' +
-              (c.source ? '<span class="src">' + c.source + '</span>' : '') + '</div>';
-    });
-    if (data.risk) {
-      html += '<div class="comp"><span class="lab">' + data.risk.label + '</span>' +
-              '<span class="sc' + (data.risk.score === null ? ' none' : '') + '">' +
-              (data.risk.score === null ? 'no data' : '−' + data.risk.score.toFixed(1)) + '</span>' +
-              '<span class="det">' + (data.risk.detail || '') + '</span>' +
-              (data.risk.source ? '<span class="src">' + data.risk.source + '</span>' : '') + '</div>';
-    }
-    html += '</div><div style="margin-top:14px;display:flex;flex-direction:column;gap:7px">';
-    (data.caveats || []).forEach(function (note) {
-      html += '<span class="caveat">' + note + '</span>';
-    });
-    html += '</div></div>';
-    out.innerHTML = html;
+    out.innerHTML = html + '</div>';
   }
 
-  document.getElementById('v-go').addEventListener('click', function () {
-    var button = this;
+  function ask() {
+    var button = document.getElementById('v-go');
+    if (!num('v-price')) {
+      out.innerHTML = '<div class="answer ask-err">An asking price is the one thing this needs.</div>';
+      return;
+    }
     button.disabled = true;
-    out.innerHTML = '<div class="result" style="color:var(--muted);font-size:13px">Scoring<span class="dots"></span></div>';
+    out.innerHTML = '<div class="answer" style="color:var(--muted);font-size:13px">Checking<span class="dots"></span></div>';
     fetch('/api/value/score', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -291,24 +380,30 @@ table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
       })
     }).then(function (r) { return r.json(); })
       .then(render)
-      .catch(function () { out.innerHTML = '<div class="result ask-err">The request failed.</div>'; })
+      .catch(function () { out.innerHTML = '<div class="answer ask-err">The request failed.</div>'; })
       .then(function () { button.disabled = false; });
+  }
+  document.getElementById('v-go').addEventListener('click', ask);
+  ['v-comune', 'v-price', 'v-size'].forEach(function (id) {
+    document.getElementById(id).addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); ask(); }
+    });
   });
 
   function lookup() {
     var raw = (document.getElementById('v-ref').value || '').trim();
     if (!raw) return;
-    out.innerHTML = '<div class="result" style="color:var(--muted);font-size:13px">Looking up ' +
+    out.innerHTML = '<div class="answer" style="color:var(--muted);font-size:13px">Looking up ' +
                     raw.toUpperCase() + '<span class="dots"></span></div>';
     fetch('/api/value/ref/' + encodeURIComponent(raw))
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (data.error) { out.innerHTML = '<div class="result ask-err">' + data.error + '</div>'; return; }
+        if (data.error) { out.innerHTML = '<div class="answer ask-err">' + data.error + '</div>'; return; }
         var breakdown = data.breakdown || {};
         breakdown.ref = data.ref;
         render(breakdown);
       })
-      .catch(function () { out.innerHTML = '<div class="result ask-err">The lookup failed.</div>'; });
+      .catch(function () { out.innerHTML = '<div class="answer ask-err">The lookup failed.</div>'; });
   }
   document.getElementById('v-find').addEventListener('click', lookup);
   document.getElementById('v-ref').addEventListener('keydown', function (event) {
@@ -327,7 +422,7 @@ table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (data.error) { note.textContent = data.error; return; }
-        note.textContent = data.saved + ' saved, ' + (data.scored || []).length + ' scored'
+        note.textContent = data.saved + ' saved, ' + (data.scored || []).length + ' checked'
           + (data.problems && data.problems.length ? ' · ' + data.problems.length + ' skipped' : '');
         if (data.saved) { setTimeout(function () { location.reload(); }, 900); }
       })

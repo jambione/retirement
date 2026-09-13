@@ -438,12 +438,22 @@ def value_page(request: Request):
         item["municipality"] = item["municipality"] or comune.get("name", "")
         item["province"] = item["province"] or comune.get("prov", "")
         scored.append(item)
+    # The towns we can actually answer for: the ones with official values, and
+    # the ones we hold figures for. Offered as a datalist so nobody types a
+    # comune we have never heard of and reads the empty answer as a verdict.
+    names = [r[0] for r in conn.execute(
+        """SELECT DISTINCT comune FROM omi_zone_values WHERE comune <> ''
+           UNION SELECT name FROM comuni WHERE name <> ''
+           ORDER BY 1 LIMIT 9000"""
+    ).fetchall()]
+
     return templates.TemplateResponse(
         request,
         "value.html",
         {
             "active": "value",
             "scored": scored,
+            "comune_names": names,
             "coverage": value_store.coverage(conn),
             **_chrome(),
         },

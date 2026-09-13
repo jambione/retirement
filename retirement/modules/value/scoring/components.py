@@ -47,10 +47,10 @@ def price(ask: float | None, size_m2: float | None, band: dict[str, Any],
           weight: float = 30.0) -> Component:
     source = band.get("source", "")
     if not ask or not size_m2 or size_m2 <= 0:
-        return Component("price", "Price vs OMI band", None, weight,
+        return Component("price", "Price vs official value", None, weight,
                          "Needs both an asking price and a floor area.", source=source)
     if not band.get("available") or not band.get("sale_mid"):
-        return Component("price", "Price vs OMI band", None, weight,
+        return Component("price", "Price vs official value", None, weight,
                          band.get("reason", "No OMI sale band for this location."),
                          source=source)
 
@@ -68,13 +68,13 @@ def price(ask: float | None, size_m2: float | None, band: dict[str, Any],
     # the range where the number is still informative; beyond that it is a
     # question about the property, not about the price.
     score = lerp(discount, -0.20, 0.30)
-    detail = (f"€{per_sqm:,.0f}/m² asked against an OMI middle of €{mid:,.0f}/m² "
-              f"({'−' if discount < 0 else ''}{abs(discount) * 100:.0f}% "
-              f"{'over' if discount < 0 else 'under'}), band €{low:,.0f}–{high:,.0f}.")
+    detail = (f"€{per_sqm:,.0f}/m² asked against an OMI middle of €{mid:,.0f}/m² — "
+              f"{abs(discount) * 100:.0f}% {'over' if discount < 0 else 'under'} it. "
+              f"Band for this zone and type: €{low:,.0f}–{high:,.0f}/m².")
     if "below_band" in flags:
         detail += (" Under the bottom of the band — that is either a real discount "
                    "or something the listing is not saying.")
-    return Component("price", "Price vs OMI band", round(score, 1), weight, detail,
+    return Component("price", "Price vs official value", round(score, 1), weight, detail,
                      {"per_sqm": round(per_sqm), "omi_mid": mid, "omi_min": low,
                       "omi_max": high, "discount_pct": round(discount * 100, 1)},
                      source, flags)
@@ -86,7 +86,7 @@ def gross_yield(ask: float | None, size_m2: float | None, band: dict[str, Any],
     """OMI rent bands are €/m² per MONTH. Twelve of them make a year."""
     source = band.get("source", "")
     if not ask or ask <= 0:
-        return Component("yield", "Gross rental yield", None, weight,
+        return Component("yield", "Rent it could earn", None, weight,
                          "Needs an asking price.", source=source)
 
     if asking_rent_month:
@@ -95,7 +95,7 @@ def gross_yield(ask: float | None, size_m2: float | None, band: dict[str, Any],
     else:
         if not band.get("rent_mid") or not size_m2:
             return Component(
-                "yield", "Gross rental yield", None, weight,
+                "yield", "Rent it could earn", None, weight,
                 "No OMI rent band for this zone" if not band.get("rent_mid")
                 else "Needs a floor area.", source=source)
         annual = band["rent_mid"] * size_m2 * 12
@@ -105,7 +105,7 @@ def gross_yield(ask: float | None, size_m2: float | None, band: dict[str, Any],
     # 2% is a bad Italian residential yield, 9% is an excellent one before
     # costs; IMU, agency and vacancy all come off the top of whatever this says.
     score = lerp(yield_pct, 2.0, 9.0)
-    return Component("yield", "Gross rental yield", round(score, 1), weight,
+    return Component("yield", "Rent it could earn", round(score, 1), weight,
                      f"{yield_pct:.1f}% gross from {basis} — before IMU, agency, "
                      "vacancy and maintenance.",
                      {"gross_yield_pct": round(yield_pct, 2),
@@ -147,10 +147,10 @@ def demand(stats: dict[str, dict[str, Any]], weight: float = 20.0) -> Component:
         sources.add(beds.get("source", ""))
 
     if not parts:
-        return Component("demand", "Demand & demographics", None, weight,
+        return Component("demand", "Is the town holding up?", None, weight,
                          "No comune statistics loaded for this place.")
     score = sum(p[1] for p in parts) / len(parts)
-    return Component("demand", "Demand & demographics", round(score, 1), weight,
+    return Component("demand", "Is the town holding up?", round(score, 1), weight,
                      "; ".join(p[2] for p in parts) + ".",
                      {name: round(value, 1) for name, value, _ in parts},
                      " · ".join(sorted(s for s in sources if s)))
@@ -164,17 +164,17 @@ def liquidity(stats: dict[str, dict[str, Any]], weight: float = 10.0) -> Compone
     one up as the other is how a dead market scores as a liquid one."""
     ntn, stock = stats.get("ntn"), stats.get("dwellings")
     if not ntn or ntn.get("value") is None:
-        return Component("liquidity", "Market liquidity", None, weight,
+        return Component("liquidity", "How often anything sells", None, weight,
                          "No NTN transaction count loaded for this comune "
                          "(Agenzia Entrate publishes it per comune, yearly).")
     if stock and stock.get("value"):
         rate = ntn["value"] / stock["value"] * 100
-        return Component("liquidity", "Market liquidity", round(lerp(rate, 0.3, 2.5), 1),
+        return Component("liquidity", "How often anything sells", round(lerp(rate, 0.3, 2.5), 1),
                          weight, f"{ntn['value']:.0f} sales against {stock['value']:,.0f} "
                                  f"dwellings — {rate:.2f}% of stock turning over in the year.",
                          {"ntn": ntn["value"], "turnover_pct": round(rate, 2)},
                          ntn.get("source", ""))
-    return Component("liquidity", "Market liquidity", round(lerp(ntn["value"], 20, 400), 1),
+    return Component("liquidity", "How often anything sells", round(lerp(ntn["value"], 20, 400), 1),
                      weight, f"{ntn['value']:.0f} normalised transactions in the year "
                              "(no dwelling count loaded, so this is volume, not turnover).",
                      {"ntn": ntn["value"]}, ntn.get("source", ""))
@@ -190,7 +190,7 @@ AMENITY_SCALE = {
 
 def amenities(distances: dict[str, Any] | None, weight: float = 10.0) -> Component:
     if not distances:
-        return Component("amenities", "What is within reach", None, weight,
+        return Component("amenities", "What is nearby", None, weight,
                          "No OpenStreetMap lookup for this point yet.",
                          source="© OpenStreetMap contributors")
     parts, described = [], []
@@ -201,10 +201,10 @@ def amenities(distances: dict[str, Any] | None, weight: float = 10.0) -> Compone
         parts.append(lerp(item["km"], worst, best))
         described.append(f"{kind} {item['km']:.1f} km")
     if not parts:
-        return Component("amenities", "What is within reach", None, weight,
+        return Component("amenities", "What is nearby", None, weight,
                          "Nothing of the kinds we look for inside the search radius.",
                          source="© OpenStreetMap contributors")
-    return Component("amenities", "What is within reach",
+    return Component("amenities", "What is nearby",
                      round(sum(parts) / len(parts), 1), weight,
                      ", ".join(described) + " (straight line, not drive time).",
                      {k: v.get("km") for k, v in distances.items()},
@@ -244,12 +244,12 @@ def risk_penalty(stats: dict[str, dict[str, Any]], cap: float = 25.0) -> Compone
         sources.add(seismic.get("source", ""))
 
     if not sources:
-        return Component("risk", "Hazard penalty", None, cap,
+        return Component("risk", "Flood, landslide, earthquake", None, cap,
                          "No hazard data loaded for this comune — this is not the "
                          "same as no hazard.")
     penalty = round(min(cap, penalty), 1)
     detail = ("; ".join(reasons) + "." if reasons
               else "Nothing above the reporting threshold for flood, landslide or seismic hazard.")
-    return Component("risk", "Hazard penalty", penalty, cap, detail,
+    return Component("risk", "Flood, landslide, earthquake", penalty, cap, detail,
                      {"penalty_points": penalty},
                      " · ".join(sorted(s for s in sources if s)))

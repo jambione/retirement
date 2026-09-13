@@ -169,7 +169,7 @@ def test_comune_figures_alone_do_not_make_a_verdict(conn):
     assert item["value"]["score"] is None
     assert item["value"]["partial_score"] is not None
     assert "no OMI band" in item["value"]["why_not"]
-    assert "Price vs OMI band" in item["value"]["missing"]
+    assert "Price vs official value" in item["value"]["missing"]
 
 
 def test_digest_prints_both_scores(conn):

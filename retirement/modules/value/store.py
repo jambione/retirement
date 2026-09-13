@@ -369,6 +369,62 @@ def stats_series(conn: sqlite3.Connection, istat: str, metric: str) -> list[dict
     return [dict(r) for r in rows]
 
 
+def place_summary(conn: sqlite3.Connection, query: str = "",
+                  istat: str = "") -> dict[str, Any]:
+    """What is on file for one town, before anyone asks a question about it.
+
+    The page calls this as soon as a town is chosen, because "we hold official
+    values for Cisternino but no town figures" is something you want to know
+    BEFORE you read a score, not inferred afterwards from which rows came back
+    empty.
+    """
+    from retirement.modules.property.omi import normalise
+
+    name_key = normalise(query)
+    comune = resolve_comune(conn, istat=istat, name_key=name_key)
+    code = (comune or {}).get("istat", istat)
+
+    bands = comune_bands(conn, istat=code or "", comune_key=name_key)
+    if not bands and name_key:
+        bands = comune_bands(conn, comune_key=name_key)
+    stats = stats_for(conn, code) if code else {}
+
+    polygons = 0
+    if bands:
+        links = tuple({b["linkzona"] for b in bands if b["linkzona"]})
+        if links:
+            marks = ",".join("?" * len(links))
+            row = conn.execute(
+                f"SELECT COUNT(*) AS n FROM omi_zones WHERE linkzona IN ({marks})", links
+            ).fetchone()
+            polygons = row["n"] if row else 0
+
+    known_names = [
+        r["comune"] for r in conn.execute(
+            "SELECT DISTINCT comune FROM omi_zone_values WHERE comune_key LIKE ? || '%' "
+            "ORDER BY comune LIMIT 8", (name_key[:4],)
+        ).fetchall()
+    ] if name_key and not bands else []
+
+    return {
+        "query": query,
+        "found": bool(bands or stats or comune),
+        "name": (comune or {}).get("name") or (bands[0]["comune"] if bands else query),
+        "istat": code,
+        "prov": (comune or {}).get("prov") or (bands[0]["prov"] if bands else ""),
+        "omi": {
+            "zones": len({b["linkzona"] for b in bands if b["linkzona"]}) if bands else 0,
+            "rows": len(bands),
+            "semester": bands[0]["semester"] if bands else "",
+            "rent": sum(1 for b in bands if b.get("loc_min")) if bands else 0,
+        },
+        "stats": {"count": len(stats), "metrics": sorted(stats),
+                  "sources": sorted({v["source"] for v in stats.values()})},
+        "polygons": polygons,
+        "did_you_mean": known_names,
+    }
+
+
 def coverage(conn: sqlite3.Connection) -> dict[str, Any]:
     """What is actually loaded. `doctor` and the UI both need to be able to say
     "no data" rather than show an empty score."""
@@ -393,6 +449,18 @@ def coverage(conn: sqlite3.Connection) -> dict[str, Any]:
             ).fetchall()
         ] if one("SELECT COUNT(*) FROM comune_stats") else [],
         "scored": one("SELECT COUNT(*) FROM value_scores"),
+        # Which places the figures actually cover. A national OMI import and
+        # six provinces of town figures are different kinds of "loaded", and
+        # the page has to be able to say which is which.
+        "stats_comuni": one("SELECT COUNT(DISTINCT istat) FROM comune_stats"),
+        "stats_provs": [
+            r[0] for r in conn.execute(
+                """SELECT DISTINCT c.prov FROM comuni c
+                   JOIN comune_stats s ON s.istat = c.istat
+                   WHERE c.prov <> '' ORDER BY c.prov"""
+            ).fetchall()
+        ] if one("SELECT COUNT(*) FROM comune_stats") else [],
+        "omi_provs": one("SELECT COUNT(DISTINCT prov) FROM omi_zone_values"),
         "imports": [
             dict(r) for r in conn.execute(
                 "SELECT * FROM value_imports ORDER BY imported_at DESC LIMIT 20"

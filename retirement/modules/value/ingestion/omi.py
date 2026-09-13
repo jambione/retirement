@@ -56,6 +56,19 @@ COLUMNS = {
 }
 
 
+def istat_code(raw: str) -> str:
+    """OMI writes `Comune_ISTAT` as the region code followed by the comune code
+    — 16074005 is Puglia (16) plus Cisternino (074005), and Alessandria appears
+    as 1006003 because region 1 is not zero-padded. Every other source in this
+    project keys on the six-digit comune code alone, so the join silently finds
+    nothing unless the region is trimmed here.
+    """
+    digits = "".join(c for c in (raw or "") if c.isdigit())
+    if not digits:
+        return ""
+    return digits[-6:].zfill(6)
+
+
 def _cell(row: dict[str, str], field: str) -> str:
     for name in COLUMNS[field]:
         if name in row and (row[name] or "").strip():
@@ -111,7 +124,7 @@ def parse_values(data: bytes, filename: str = "") -> list[dict[str, Any]]:
             continue                      # a row with neither band says nothing
         rows.append({
             "semester": semester,
-            "istat": _cell(row, "istat"),
+            "istat": istat_code(_cell(row, "istat")),
             "comune_key": normalise(comune),
             "comune": comune,
             "prov": _cell(row, "prov"),
