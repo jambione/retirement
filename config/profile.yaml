@@ -13,6 +13,9 @@ modules:
   property:
     enabled: true
     config: config/property.yaml
+  board:
+    enabled: true
+    config: config/board.yaml
   # finance:   { enabled: false }   # drawdown / tax modelling
   # healthcare:{ enabled: false }   # coverage comparison by country
   # residency: { enabled: false }   # visa + residency pathway tracking

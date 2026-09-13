@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Retirement{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* ── Adriatic night ───────────────────────────────────────────────────────
+   Warm near-black rather than blue-black, one terracotta accent and one
+   Adriatic teal at the same chroma, Instrument Serif for anything you read
+   and IBM Plex for anything you operate. The instrument-panel half is the
+   meters and the mono figures; the inviting half is the serif and the prose.
+   ───────────────────────────────────────────────────────────────────────── */
+:root{
+  --bg:#12100F; --surface:#191615; --surface-2:#1C1918; --line:#262120;
+  --line-2:#2C2724;
+  --ink:#EFEAE3; --ink-2:#D8D0C6; --muted:#9A9188; --faint:#7E766D; --dim:#5E574F;
+  --accent:#E39A5C; --accent-ink:#12100F; --teal:#4FB8C4;
+  --good:#7FC49A; --warn:#D9A441;
+  --r:14px; --r-sm:9px;
+  --serif:"Instrument Serif",Iowan Old Style,Georgia,serif;
+  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:
+    radial-gradient(1200px 520px at 78% -10%, rgba(79,184,196,.10), transparent 70%),
+    radial-gradient(900px 460px at 8% 2%, rgba(227,154,92,.09), transparent 68%),
+    var(--bg);
+  background-attachment:fixed;
+  color:var(--ink); font-family:var(--sans); font-weight:300; font-size:15px;
+  line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent);text-decoration:none} a:hover{color:#F2B27B}
+.serif{font-family:var(--serif);font-weight:400}
+.mono{font-family:var(--mono)}
+.eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
+h1,h2,h3{margin:0;font-weight:400}
+
+/* chrome */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:24px;
+  padding:16px 28px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px}
+.brand img{width:38px;height:38px;object-fit:contain;flex:0 0 38px}
+.brand-text{display:flex;flex-direction:column;line-height:1.15}
+.brand .name{font-family:var(--serif);font-size:21px}
+.brand .name b{font-weight:400;color:var(--accent)}
+.brand .sub{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+.nav{display:flex;gap:2px;flex-wrap:wrap}
+.nav a,.nav span{font-size:13px;padding:5px 13px;border-radius:999px;color:var(--faint)}
+.nav a:hover{color:var(--ink-2)}
+.nav a.on{background:var(--accent);color:var(--accent-ink);font-weight:500}
+.nav span.soon{color:#4A443E;cursor:default}
+.meta-right{display:flex;align-items:center;gap:18px;color:var(--muted);font-size:12.5px}
+
+.wrap{max-width:1480px;margin:0 auto;padding:26px 28px 72px}
+.ribbon{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:12px 28px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.ribbon .chip{color:var(--ink-2);border:1px solid var(--line-2);border-radius:999px;padding:4px 11px;font-size:11.5px}
+.grow{flex-grow:1}
+
+/* surfaces */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:22px}
+.card + .card{margin-top:14px}
+
+/* controls */
+label{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+input,textarea,select{width:100%;padding:10px 12px;border:1px solid var(--line-2);border-radius:var(--r-sm);
+  background:#141211;color:var(--ink);font:inherit;font-size:14px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
+textarea{min-height:152px;resize:vertical;font-family:var(--serif);font-size:17px;line-height:1.45}
+button,.btn{font:inherit;font-size:13.5px;border-radius:var(--r-sm);padding:11px 18px;cursor:pointer;
+  border:1px solid var(--line-2);background:transparent;color:var(--ink-2);transition:border-color .12s,color .12s}
+button:hover,.btn:hover{border-color:#3C3532;color:var(--ink)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button.primary:hover{background:#F0A968;color:var(--accent-ink)}
+button.tiny{padding:6px 13px;font-size:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px}
+
+/* meters */
+.meter{height:2px;background:var(--line-2);border-radius:2px;overflow:hidden}
+.meter > i{display:block;height:2px;background:var(--accent)}
+.meter.teal > i{background:var(--teal)}
+.meter.plain > i{background:#6E655C}
+
+.pill{font-size:11px;border-radius:5px;padding:3px 9px;display:inline-block}
+.pill.warn{color:var(--warn);background:rgba(217,164,65,.10)}
+.pill.good{color:var(--good);background:rgba(127,196,154,.10)}
+.pill.flat{color:var(--faint);border:1px solid var(--line-2)}
+
+.empty{color:var(--muted);padding:28px 0;font-size:14px}
+.foot{color:var(--dim);font-size:12px;margin-top:26px;line-height:1.6;max-width:760px}
+
+@media (max-width:720px){
+  .wrap{padding:20px 16px 56px}
+  .topbar,.ribbon{padding-left:16px;padding-right:16px}
+}
+/* ── ask B ───────────────────────────────────────────────────────────────
+   The round B sits beside a section heading and opens a drawer that says
+   what it can see before you ask it anything. */
+.askb{width:26px;height:26px;padding:0;border-radius:50%;border:1px solid var(--line-2);
+  background:transparent;color:var(--faint);font-family:var(--serif);font-size:16px;line-height:1;
+  display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;
+  transition:border-color .12s,color .12s,background .12s}
+.askb:hover{border-color:var(--accent);color:var(--accent);background:rgba(227,154,92,.08)}
+.askb.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+#scrim{position:fixed;inset:0;background:rgba(8,7,6,.55);opacity:0;pointer-events:none;
+  transition:opacity .18s;z-index:40}
+#scrim.open{opacity:1;pointer-events:auto}
+#askdrawer{position:fixed;top:0;right:0;bottom:0;width:440px;max-width:100vw;z-index:50;
+  background:var(--surface);border-left:1px solid var(--line);
+  transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column}
+#askdrawer.open{transform:none}
+.ask-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;
+  padding:20px 22px 16px;border-bottom:1px solid var(--line)}
+.ask-hd h2{font-family:var(--serif);font-size:21px}
+.ask-body{flex-grow:1;overflow-y:auto;padding:18px 22px 22px}
+.ask-foot{border-top:1px solid var(--line);padding:16px 22px 20px}
+.ask-sees{font-size:13px;color:var(--ink-2);line-height:1.55;margin:0 0 10px}
+.ask-peek{font-family:var(--mono);font-size:11px;color:var(--faint);white-space:pre-wrap;
+  background:#141211;border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:12px;max-height:230px;overflow:auto;margin-top:10px}
+.ask-peek-toggle{background:none;border:none;color:var(--faint);font-size:11.5px;padding:0;
+  cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.ask-peek-toggle:hover{color:var(--ink-2)}
+.suggest{display:flex;flex-direction:column;gap:7px;margin:16px 0}
+.suggest button{text-align:left;font-size:12.5px;padding:9px 12px;color:var(--muted);
+  border-color:var(--line);line-height:1.4}
+.suggest button:hover{color:var(--ink-2)}
+.ask-answer{font-size:14px;line-height:1.62;color:var(--ink-2);white-space:pre-wrap;margin-top:18px;
+  padding-top:18px;border-top:1px solid var(--line)}
+.ask-answer .who{font-size:11px;color:var(--dim);margin-bottom:10px;letter-spacing:.04em}
+.ask-err{color:var(--warn);font-size:13px;line-height:1.55;margin-top:18px}
+.ask-row{display:flex;gap:9px;align-items:center;margin-bottom:10px}
+.ask-row select{flex-grow:1;padding:8px 10px;font-size:12.5px}
+#askq{min-height:74px;font-family:var(--sans);font-size:14px}
+.dots::after{content:"";animation:dots 1.2s steps(4,end) infinite}
+@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+@media (max-width:520px){ #askdrawer{width:100vw}}
+{% block style %}{% endblock %}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div style="display:flex;align-items:baseline;gap:26px;flex-wrap:wrap">
+    <div class="brand">
+      <img src="/static/brasfield-logo.png" alt="Brasfield">
+      <span class="brand-text">
+        <span class="name"><b>Brasfield</b> Retirement</span>
+        <span class="sub">property &amp; plan</span>
+      </span>
+    </div>
+    <nav class="nav">
+      <a href="/" class="{% if active == 'property' %}on{% endif %}">Property</a>
+      <a href="/board" class="{% if active == 'board' %}on{% endif %}">Board</a>
+      <span class="soon">Finance</span>
+      <span class="soon">Healthcare</span>
+      <span class="soon">Residency</span>
+    </nav>
+  </div>
+  <div class="meta-right">
+    {% if days_to_target is not none %}
+      <span>{{ target_label|lower }} in <span class="mono" style="color:var(--ink)">{{ days_to_target }} days</span></span>
+    {% endif %}
+  </div>
+</div>
+
+{% block ribbon %}{% endblock %}
+
+<div class="wrap">
+  {% block content %}{% endblock %}
+</div>
+
+<div id="scrim" hidden></div>
+<aside id="askdrawer" aria-label="Ask B" hidden>
+  <div class="ask-hd">
+    <div>
+      <div class="eyebrow">Ask B about</div>
+      <h2 id="ask-title">—</h2>
+    </div>
+    <button class="tiny" id="ask-close" aria-label="Close">Close</button>
+  </div>
+
+  <div class="ask-body">
+    <p class="ask-sees" id="ask-sees">Loading what B can see…</p>
+    <button class="ask-peek-toggle" id="ask-peek-toggle" hidden>show the exact text B will read</button>
+    <pre class="ask-peek" id="ask-peek" hidden></pre>
+    <div class="suggest" id="ask-suggest"></div>
+    <div id="ask-out"></div>
+  </div>
+
+  <div class="ask-foot">
+    <div class="ask-row">
+      <select id="ask-provider" aria-label="Which AI"></select>
+    </div>
+    <textarea id="askq" placeholder="Ask anything about this section…"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" id="ask-send" style="flex-grow:1">Ask B</button>
+    </div>
+  </div>
+</aside>
+
+<script>
+// Ask B. The context is fetched first and shown in full, so you can see what
+// is about to be sent before you send it; nothing leaves the machine on open.
+(function () {
+  const scrim   = document.getElementById('scrim');
+  const drawer  = document.getElementById('askdrawer');
+  const elTitle = document.getElementById('ask-title');
+  const elSees  = document.getElementById('ask-sees');
+  const elPeek  = document.getElementById('ask-peek');
+  const elPeekT = document.getElementById('ask-peek-toggle');
+  const elSugg  = document.getElementById('ask-suggest');
+  const elProv  = document.getElementById('ask-provider');
+  const elQ     = document.getElementById('askq');
+  const elSend  = document.getElementById('ask-send');
+  const elOut   = document.getElementById('ask-out');
+  let current = null;
+
+  function close() {
+    drawer.classList.remove('open');
+    scrim.classList.remove('open');
+    document.querySelectorAll('.askb.on').forEach(function (b) { b.classList.remove('on'); });
+    setTimeout(function () { drawer.hidden = true; scrim.hidden = true; }, 220);
+  }
+
+  function open(button) {
+    const scope = button.dataset.scope;
+    const listingId = button.dataset.listing || '';
+    current = { scope: scope, listing_id: listingId };
+
+    document.querySelectorAll('.askb.on').forEach(function (b) { b.classList.remove('on'); });
+    button.classList.add('on');
+    drawer.hidden = false; scrim.hidden = false;
+    requestAnimationFrame(function () { drawer.classList.add('open'); scrim.classList.add('open'); });
+
+    elTitle.textContent = '…';
+    elSees.textContent = 'Loading what B can see…';
+    elPeek.hidden = true; elPeekT.hidden = true; elSugg.innerHTML = ''; elOut.innerHTML = '';
+
+    const url = '/ask/context?scope=' + encodeURIComponent(scope) +
+                (listingId ? '&listing_id=' + encodeURIComponent(listingId) : '');
+    fetch(url).then(function (r) { return r.json(); }).then(function (data) {
+      elTitle.textContent = data.title || scope;
+      elSees.textContent = data.explains || '';
+      elPeek.textContent = data.context || '';
+      elPeekT.hidden = false;
+      elPeekT.textContent = 'show the exact text B will read (' +
+        (data.chars || 0).toLocaleString() + ' characters)';
+
+      (data.suggestions || []).forEach(function (text) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = text;
+        b.addEventListener('click', function () { elQ.value = text; elQ.focus(); });
+        elSugg.appendChild(b);
+      });
+
+      elProv.innerHTML = '';
+      const ready = (data.providers || []).filter(function (p) { return p.ready; });
+      if (!ready.length) {
+        const o = document.createElement('option');
+        o.textContent = 'No AI installed on this machine';
+        o.disabled = true; elProv.appendChild(o);
+        elSend.disabled = true;
+      } else {
+        elSend.disabled = false;
+        ready.forEach(function (p) {
+          const o = document.createElement('option');
+          o.value = p.id; o.textContent = p.label + ' — ' + p.detail;
+          if (p.id === data.default_provider) o.selected = true;
+          elProv.appendChild(o);
+        });
+      }
+      elQ.focus();
+    }).catch(function () {
+      elSees.textContent = 'Could not load the context for this section.';
+    });
+  }
+
+  function send() {
+    const question = elQ.value.trim();
+    if (!question || !current) return;
+    elSend.disabled = true;
+    elOut.innerHTML = '<div class="ask-answer"><div class="who">' +
+      (elProv.options[elProv.selectedIndex] || {}).text + '</div>' +
+      '<span class="dots">thinking</span></div>';
+
+    fetch('/ask', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: current.scope, listing_id: current.listing_id,
+        question: question, provider: elProv.value
+      })
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok) {
+          elOut.innerHTML = '<div class="ask-err"></div>';
+          elOut.firstChild.textContent = res.d.error || 'That did not work.';
+          return;
+        }
+        const wrap = document.createElement('div');
+        wrap.className = 'ask-answer';
+        const who = document.createElement('div');
+        who.className = 'who';
+        who.textContent = res.d.provider_label + ' · ' + res.d.seconds + 's';
+        const body = document.createElement('div');
+        body.textContent = res.d.answer;
+        wrap.appendChild(who); wrap.appendChild(body);
+        elOut.innerHTML = ''; elOut.appendChild(wrap);
+      })
+      .catch(function () { elOut.innerHTML = '<div class="ask-err">The request failed.</div>'; })
+      .finally(function () { elSend.disabled = false; });
+  }
+
+  document.addEventListener('click', function (event) {
+    const button = event.target.closest('.askb');
+    if (button) { event.preventDefault(); open(button); }
+  });
+  elPeekT.addEventListener('click', function () {
+    elPeek.hidden = !elPeek.hidden;
+    elPeekT.textContent = (elPeek.hidden ? 'show' : 'hide') + ' the exact text B will read';
+  });
+  document.getElementById('ask-close').addEventListener('click', close);
+  scrim.addEventListener('click', close);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  elSend.addEventListener('click', send);
+  elQ.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') send();
+  });
+})();
+</script>
+
+{% block script %}{% endblock %}
+</body>
+</html>

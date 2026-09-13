@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block title %}Property — Retirement{% endblock %}
+
+{% block style %}
+.layout{display:grid;grid-template-columns:372px minmax(0,1fr);gap:26px;align-items:start}
+@media (max-width:1040px){.layout{grid-template-columns:1fr}}
+.listing{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:22px;display:flex;gap:22px;margin-bottom:14px}
+@media (max-width:640px){.listing{flex-direction:column;gap:16px}}
+.ring{position:relative;width:76px;height:76px;flex:0 0 76px}
+.ring .n{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);font-size:23px}
+.bars{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:14px}
+.bar-label{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint)}
+.bar-label b{font-family:var(--mono);font-weight:400;color:var(--ink-2)}
+.note{font-family:var(--serif);font-style:italic;font-size:15.5px;color:#BDB4A9;margin:0;line-height:1.45}
+.title-l{font-family:var(--serif);font-size:22px;color:#F3EEE7}
+.price{font-family:var(--mono);font-size:24px;color:#F3EEE7}
+.verdicts{display:flex;gap:7px}
+.verdicts form{margin:0}
+.slider{position:relative;height:3px;background:var(--line-2);border-radius:2px;margin:14px 0 9px}
+.slider i{position:absolute;left:14%;right:22%;top:0;height:3px;background:var(--accent);border-radius:2px}
+.weights{display:flex;flex-direction:column;gap:15px}
+.weight-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+.weight-head span{font-size:13px;color:var(--ink-2)}
+.weight-head input{width:58px;padding:2px 6px;font-family:var(--mono);font-size:12px;text-align:right;
+  background:transparent;border:1px solid transparent;color:var(--accent)}
+.weight-head input:hover{border-color:var(--line-2)}
+.dashed{border:1px dashed var(--line-2);border-radius:var(--r);padding:18px 22px}
+{% endblock %}
+
+{% block ribbon %}
+<div class="ribbon">
+  {% if last_run and not last_run.error %}
+    <span>Last scan ·</span>
+    <span class="mono" style="color:var(--ink)">{{ last_run.scanned }}</span><span>listings</span>
+    <span style="color:var(--good)">{{ last_run.new }} new</span>
+    <span style="color:var(--accent)">{{ last_run.price_drops }} price drops</span>
+    <span style="color:var(--dim)">{{ last_run.rejected }} filtered out</span>
+  {% elif last_run and last_run.error %}
+    <span style="color:var(--warn)">Last scan failed — {{ last_run.error }}</span>
+  {% else %}
+    <span>No scan yet this session.</span>
+  {% endif %}
+  <div class="grow"></div>
+  {% for area in config.areas %}
+    <span class="chip">{{ area.label }}</span>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="layout">
+
+  <!-- ── the brief ──────────────────────────────────────────── -->
+  <div>
+    <form method="post" action="/criteria">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px">
+          <span class="eyebrow">The brief</span>
+          <button type="button" class="askb" data-scope="brief"
+                  title="Ask B about the brief" aria-label="Ask B about the brief">B</button>
+        </div>
+        <textarea name="prompt" aria-label="What we are looking for">{{ config.prompt|trim }}</textarea>
+        <div style="display:flex;align-items:center;gap:9px;padding-top:14px;margin-top:14px;border-top:1px solid var(--line)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" stroke-width="1.6"
+               stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 5.6L20 10l-5.8 1.4L12 17l-2.2-5.6L4 10l5.8-1.4z"/></svg>
+          <span style="font-size:11.5px;color:#8A8179">read against every listing description</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="eyebrow" style="margin-bottom:6px">Budget</div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+          <input class="mono" name="min_price" type="number" value="{{ config.budget.min or 0 }}"
+                 style="font-size:19px;border:none;padding:6px 0;background:transparent" aria-label="Minimum price">
+          <span style="font-size:11px;color:var(--dim)">to</span>
+          <input class="mono" name="max_price" type="number" value="{{ config.budget.max or 0 }}"
+                 style="font-size:19px;border:none;padding:6px 0;background:transparent;text-align:right" aria-label="Maximum price">
+        </div>
+        <div class="slider"><i></i></div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:10.5px;color:var(--dim)">purchase price only</span>
+          <span style="font-size:10.5px;color:var(--dim)">+9–11% closing</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="eyebrow" style="margin-bottom:18px">What value means</div>
+        <div class="weights">
+          {% set w = config.scoring.weights %}
+          {% for field, label, klass, value in [
+              ('w_value','Price vs area median','', w.price_vs_area_median),
+              ('w_character','Town character','teal', w.town_character),
+              ('w_airport','Airport access','plain', w.airport_access),
+              ('w_size','Size per euro','plain', w.size_per_euro),
+              ('w_condition','Condition','plain', w.condition),
+              ('w_rental','Rental potential','plain', w.rental_potential)] %}
+            <div>
+              <div class="weight-head">
+                <span>{{ label }}</span>
+                <input name="{{ field }}" type="number" step="0.05" min="0" max="1" value="{{ value }}"
+                       aria-label="{{ label }} weight">
+              </div>
+              <div class="meter {{ klass }}"><i style="width: {{ (value * 100)|round|int }}%"></i></div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+        <div>
+          <div class="eyebrow">Hard limit</div>
+          <div style="font-size:13px;color:var(--ink-2);margin-top:4px">Drive to an airport</div>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:5px">
+          <input class="mono" name="max_airport_km" type="number"
+                 value="{{ config.scoring.hard_filters.max_airport_km or 90 }}"
+                 style="width:72px;font-size:24px;text-align:right;border:none;background:transparent"
+                 aria-label="Maximum km to an airport">
+          <span style="font-size:12px;color:var(--faint)">km</span>
+        </div>
+      </div>
+
+      <input type="hidden" name="min_size" value="{{ config.property.min_size_sqm or 0 }}">
+      <input type="hidden" name="min_bedrooms" value="{{ config.property.min_bedrooms or 0 }}">
+      <div class="row" style="margin-top:14px">
+        <button type="submit" style="flex-grow:1">Save the brief</button>
+      </div>
+    </form>
+
+    <div class="card" style="margin-top:14px">
+      <div class="eyebrow" style="margin-bottom:14px">Run it</div>
+      <form method="post" action="/run" class="row" style="margin:0">
+        <button type="submit" class="primary" style="flex-grow:1">Scan now</button>
+        <button type="submit" name="dry_run" value="1" style="flex-grow:1">Scan, don't email</button>
+      </form>
+      <form method="post" action="/add" style="margin-top:16px">
+        <label for="url">Found one somewhere else?</label>
+        <input id="url" name="url" placeholder="https://www.immobiliare.it/annunci/…" required>
+        <button type="submit" class="tiny" style="margin-top:10px">Add it to the pile</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── the shortlist ──────────────────────────────────────── -->
+  <div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h1 class="serif" style="font-size:27px">Worth your time</h1>
+        <button type="button" class="askb" data-scope="shortlist"
+                title="Ask B about the shortlist" aria-label="Ask B about the shortlist">B</button>
+      </div>
+      <span style="font-size:12.5px;color:var(--faint)">scored against what is on the market in each area today</span>
+    </div>
+
+    {% if not shortlist %}
+      <div class="card empty">
+        Nothing scored yet. Put your Idealista key in <span class="mono">.env</span> and hit
+        <b style="color:var(--ink-2);font-weight:500">Scan now</b>, or paste a listing URL on the left —
+        a pasted listing goes through exactly the same scoring.
+      </div>
+    {% endif %}
+
+    {% for item in shortlist %}
+      {% set d = item.detail %}
+      {% set total = (d.total or 0) %}
+      <article class="listing">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+          <div class="ring">
+            <svg width="76" height="76" viewBox="0 0 76 76" aria-hidden="true">
+              <circle cx="38" cy="38" r="33" fill="none" stroke="var(--line-2)" stroke-width="4"/>
+              <circle cx="38" cy="38" r="33" fill="none" stroke="var(--accent)" stroke-width="4"
+                      stroke-linecap="round" transform="rotate(-90 38 38)"
+                      stroke-dasharray="{{ (2.0736 * total)|round(1) }} {{ (207.36 - 2.0736 * total)|round(1) }}"/>
+            </svg>
+            <span class="n">{{ total|round|int }}</span>
+          </div>
+          {% if item.verdict %}<span class="pill good">{{ item.verdict }}</span>{% endif %}
+          <button type="button" class="askb" data-scope="listing" data-listing="{{ item.id }}"
+                  title="Ask B about this listing" aria-label="Ask B about this listing">B</button>
+        </div>
+
+        <div style="flex-grow:1;display:flex;flex-direction:column;gap:11px;min-width:0">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+            <div style="min-width:0">
+              <a class="title-l" href="{{ item.url }}" target="_blank" rel="noopener">{{ item.title or 'Untitled listing' }}</a>
+              <div style="font-size:12.5px;color:var(--muted);margin-top:3px">
+                {{ item.municipality }}{% if item.province %}, {{ item.province }}{% endif %}
+                {%- if d.airport %} · {{ d.airport.km }} km to {{ d.airport.iata }}{% endif %}
+                {%- if item.area_id %} · {{ item.area_id }}{% endif %}
+              </div>
+            </div>
+            <div style="text-align:right">
+              <div class="price">
+                {%- if item.price %}€{{ '{:,.0f}'.format(item.price)|replace(',','.') }}{% else %}price on request{% endif -%}
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-top:3px">
+                {% if item.size_sqm %}{{ '%.0f'|format(item.size_sqm) }} m²{% endif %}
+                {%- if d.price_per_sqm %} · <span class="mono">€{{ '{:,.0f}'.format(d.price_per_sqm)|replace(',','.') }}</span>/m²{% endif %}
+                {%- if d.price_per_sqm and d.area_median_per_sqm %}
+                  {% set delta = (100 * (d.price_per_sqm / d.area_median_per_sqm - 1))|round|int %}
+                  <span style="color: {% if delta < 0 %}var(--good){% else %}var(--warn){% endif %}">{{ '%+d'|format(delta) }}%</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          {% if d.components %}
+            <div class="bars">
+              {% for key, label, klass in [
+                  ('price_vs_area_median','value',''),
+                  ('town_character','character','teal'),
+                  ('condition','condition','plain'),
+                  ('airport_access','access','plain'),
+                  ('rental_potential','rental','plain')] %}
+                {% if key in d.components %}
+                  <div>
+                    <div class="bar-label"><span>{{ label }}</span><b>{{ d.components[key]|round|int }}</b></div>
+                    <div class="meter {{ klass }}" style="margin-top:6px"><i style="width: {{ d.components[key]|round|int }}%"></i></div>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if d.note %}<p class="note">{{ d.note }}</p>{% endif %}
+
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+                      padding-top:13px;border-top:1px solid #242020">
+            <div>
+              {% for concern in d.concerns or [] %}<span class="pill warn" style="margin-right:4px">{{ concern }}</span>{% endfor %}
+              {% if not d.concerns %}<span style="font-size:11px;color:var(--dim)">no flagged concerns</span>{% endif %}
+            </div>
+            <div class="verdicts">
+              {% for verdict in ['shortlist','visit','reject'] %}
+                <form method="post" action="/decision">
+                  <input type="hidden" name="listing_id" value="{{ item.id }}">
+                  <input type="hidden" name="verdict" value="{{ verdict }}">
+                  <button class="tiny" type="submit">{{ verdict }}</button>
+                </form>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </article>
+    {% endfor %}
+
+    <p class="foot">
+      Scores are relative to what is listed in each search area today — a 91 means good value
+      <i>for that area</i>, not good value in Italy. Every component that produced the number is
+      shown above, so a ranking you disagree with is a weight to change, not a black box.
+    </p>
+  </div>
+</div>
+{% endblock %}

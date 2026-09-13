@@ -1,0 +1,27 @@
+# The board. Deliberately small: four columns, one card shape, nothing else.
+# No assignees, no swimlanes, no checklists -- if it needs those it is a
+# project, and this is a list of things standing between us and a house.
+
+target:
+  label: "March scouting trip"
+  date: 2027-03-14          # what "before the trip" is measured against
+
+columns:
+  - id: someday
+    label: Someday
+  - id: soon
+    label: Before the trip
+    accent: true            # the column the summary leans on
+  - id: doing
+    label: In progress
+  - id: done
+    label: Done
+    terminal: true          # cards landing here get a completion date
+
+tags: [property, finance, paperwork, trip, healthcare, life]
+
+summary:
+  # The line at the top of the board. Numbers always; the sentence is written
+  # by Claude when ANTHROPIC_API_KEY is set, and falls back to a plain
+  # rendering of what is due soonest when it is not.
+  due_soon_days: 45

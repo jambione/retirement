@@ -41,4 +41,5 @@ def register(name: str) -> Callable[[type[Module]], type[Module]]:
 
 def load_registry() -> None:
     """Import modules so their @register decorators fire."""
-    from retirement.modules.property import pipeline  # noqa: F401
+    from retirement.modules.board import pipeline as _board  # noqa: F401
+    from retirement.modules.property import pipeline as _property  # noqa: F401

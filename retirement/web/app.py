@@ -1,4 +1,4 @@
-"""Local web UI: set the parameters, read the shortlist, record verdicts.
+"""Local web UI: the brief, the shortlist, and the board.
 
 Binds to 127.0.0.1 by default. If you expose it through the cloudflared tunnel,
 put Cloudflare Access in front of it -- there is no login here on purpose.
@@ -6,11 +6,13 @@ put Cloudflare Access in front of it -- there is no login here on purpose.
 from __future__ import annotations
 
 import threading
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from retirement.core import db
@@ -22,35 +24,74 @@ load_registry()
 
 BASE = Path(__file__).parent
 app = FastAPI(title="Retirement project")
+app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE / "templates"))
 
 _run_lock = threading.Lock()
 _last_run: dict[str, Any] = {}
 
 PROPERTY_CONFIG = "config/property.yaml"
+BOARD_CONFIG = "config/board.yaml"
+
+# Steps almost every Italian purchase goes through, offered from the board's
+# empty state rather than seeded -- a board you did not write is a board you
+# do not trust.
+STARTER_CARDS = [
+    ("Apply for a codice fiscale", "paperwork", "someday"),
+    ("Open an Italian bank account", "paperwork", "someday"),
+    ("Decide how the purchase is financed", "finance", "someday"),
+    ("Shortlist towns worth a full day each", "property", "soon"),
+    ("Contact agents about off-portal stock", "property", "soon"),
+    ("Book flights and a car", "trip", "soon"),
+    ("Find a geometra for the survey", "property", "someday"),
+    ("Understand the 9-11% closing costs", "finance", "someday"),
+    ("Check what health cover costs as a resident", "healthcare", "someday"),
+]
 
 
-def _config() -> dict[str, Any]:
+def _property_config() -> dict[str, Any]:
     return load_yaml(PROPERTY_CONFIG)
 
 
+def _board_config() -> dict[str, Any]:
+    return load_yaml(BOARD_CONFIG)
+
+
+def _chrome() -> dict[str, Any]:
+    """Values the shared header needs on every page."""
+    board_cfg = _board_config()
+    target = (board_cfg.get("target") or {})
+    days = None
+    raw = target.get("date")
+    if raw:
+        try:
+            parsed = raw if isinstance(raw, date) else datetime.strptime(str(raw), "%Y-%m-%d").date()
+            days = (parsed - date.today()).days
+        except ValueError:
+            days = None
+    return {
+        "modules": Profile.load().enabled_modules(),
+        "target_label": target.get("label", ""),
+        "days_to_target": days,
+    }
+
+
+# ── property ───────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     from retirement.modules.property import store
 
     conn = db.connect()
     store.migrate(conn)
-    config = _config()
-    # Starlette's current signature is (request, name, context); the old
-    # (name, {"request": ...}) form silently misreads the first argument.
     return templates.TemplateResponse(
         request,
-        "index.html",
+        "property.html",
         {
-            "config": config,
+            "active": "property",
+            "config": _property_config(),
             "shortlist": store.latest_shortlist(conn, 40),
             "last_run": _last_run,
-            "modules": Profile.load().enabled_modules(),
+            **_chrome(),
         },
     )
 
@@ -70,7 +111,7 @@ def save_criteria(
     w_rental: float = Form(0.10),
     w_size: float = Form(0.15),
 ):
-    config = _config()
+    config = _property_config()
     config["prompt"] = prompt
     config.setdefault("budget", {}).update({"min": min_price, "max": max_price})
     config.setdefault("property", {}).update(
@@ -110,8 +151,7 @@ def _do_run(dry_run: bool) -> None:
     if not _run_lock.acquire(blocking=False):
         return
     try:
-        conn = db.connect()
-        module = REGISTRY["property"](_config(), conn)
+        module = REGISTRY["property"](_property_config(), db.connect())
         _last_run.clear()
         _last_run.update(module.run(dry_run=dry_run))
     except Exception as exc:  # surfaced in the UI rather than lost to the log
@@ -125,6 +165,142 @@ def _do_run(dry_run: bool) -> None:
 def trigger_run(background: BackgroundTasks, dry_run: str = Form("")):
     background.add_task(_do_run, bool(dry_run))
     return RedirectResponse("/", status_code=303)
+
+
+# ── board ──────────────────────────────────────────────────────────────────
+@app.get("/board", response_class=HTMLResponse)
+def board(request: Request):
+    from retirement.modules.board import store, summary
+
+    conn = db.connect()
+    store.migrate(conn)
+    config = _board_config()
+    return templates.TemplateResponse(
+        request,
+        "board.html",
+        {
+            "active": "board",
+            "config": config,
+            "columns": config.get("columns", []),
+            "cards": store.by_column(conn),
+            "summary": summary.build(conn, config),
+            "today": date.today().isoformat(),
+            **_chrome(),
+        },
+    )
+
+
+@app.post("/board/card")
+def board_add(
+    title: str = Form(...),
+    column: str = Form("someday"),
+    tag: str = Form(""),
+    due: str = Form(""),
+):
+    from retirement.modules.board import store
+
+    conn = db.connect()
+    store.migrate(conn)
+    if title.strip():
+        store.add(conn, title, column, tag, due or None)
+    return RedirectResponse("/board", status_code=303)
+
+
+@app.post("/board/move")
+async def board_move(request: Request):
+    """Called by the drag handler; also usable as a plain form post."""
+    from retirement.modules.board import store
+
+    payload: dict[str, Any]
+    if request.headers.get("content-type", "").startswith("application/json"):
+        payload = await request.json()
+    else:
+        payload = dict(await request.form())
+
+    conn = db.connect()
+    store.migrate(conn)
+    terminal = tuple(
+        c["id"] for c in _board_config().get("columns", []) if c.get("terminal")
+    ) or ("done",)
+    store.move(
+        conn,
+        int(payload["card_id"]),
+        str(payload["column"]),
+        int(payload["before_id"]) if payload.get("before_id") else None,
+        terminal_columns=terminal,
+    )
+    if request.headers.get("content-type", "").startswith("application/json"):
+        return JSONResponse({"ok": True})
+    return RedirectResponse("/board", status_code=303)
+
+
+@app.post("/board/delete")
+def board_delete(card_id: int = Form(...)):
+    from retirement.modules.board import store
+
+    store.delete(db.connect(), card_id)
+    return RedirectResponse("/board", status_code=303)
+
+
+@app.post("/board/starter")
+def board_starter():
+    from retirement.modules.board import store
+
+    conn = db.connect()
+    store.migrate(conn)
+    if not store.counts(conn)["open"]:
+        for title, tag, column in STARTER_CARDS:
+            store.add(conn, title, column, tag)
+    return RedirectResponse("/board", status_code=303)
+
+
+# ── ask B ──────────────────────────────────────────────────────────────────
+# One question, one section's data, whichever AI is installed. The context is
+# fetched separately from the answer so the panel can show what B is about to
+# read BEFORE anything is sent anywhere.
+def _context_config(scope: str) -> dict[str, Any]:
+    return _board_config() if scope == "board" else _property_config()
+
+
+@app.get("/ask/context")
+def ask_context(scope: str, listing_id: str = ""):
+    from retirement.core import ask, context
+
+    conn = db.connect()
+    try:
+        built = context.build(scope, conn, _context_config(scope), listing_id=listing_id)
+    except KeyError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    built["providers"] = ask.available()
+    built["default_provider"] = ask.default_provider()
+    return JSONResponse(built)
+
+
+@app.post("/ask")
+async def ask_run(request: Request):
+    from retirement.core import ask, context
+
+    payload = await request.json()
+    scope = str(payload.get("scope", "shortlist"))
+    question = str(payload.get("question", "")).strip()
+    if not question:
+        return JSONResponse({"error": "Ask something first."}, status_code=400)
+
+    conn = db.connect()
+    try:
+        built = context.build(
+            scope, conn, _context_config(scope), listing_id=str(payload.get("listing_id", ""))
+        )
+        result = ask.ask(
+            context.prompt_for(built, question),
+            provider=payload.get("provider") or None,
+        )
+    except Exception as exc:
+        # The panel shows this verbatim; a CLI that is merely logged out should
+        # say so rather than turn into a generic 500.
+        return JSONResponse({"error": str(exc)}, status_code=502)
+    result["scope"] = scope
+    return JSONResponse(result)
 
 
 @app.get("/healthz")

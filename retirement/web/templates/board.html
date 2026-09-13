@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Board — Retirement{% endblock %}
+
+{% block style %}
+.stats{display:flex;gap:26px;align-items:flex-end;flex-wrap:wrap}
+.stat{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.stat b{font-family:var(--mono);font-weight:400;font-size:24px;color:#F3EEE7}
+.stat span{font-size:11px;color:var(--faint)}
+.summary{display:flex;gap:16px;align-items:flex-start}
+.summary p{margin:0;font-size:14.5px;color:var(--ink-2);line-height:1.55;text-wrap:pretty}
+.cols{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;align-items:start;margin-top:20px}
+@media (max-width:1100px){.cols{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:620px){.cols{grid-template-columns:1fr}}
+.col-head{display:flex;align-items:baseline;justify-content:space-between;
+  padding:0 4px 8px;border-bottom:1px solid var(--line)}
+.col.accent .col-head{border-bottom-color:var(--accent)}
+.col.accent .col-head .eyebrow{color:var(--accent)}
+.col-body{display:flex;flex-direction:column;gap:10px;padding-top:10px;min-height:90px}
+.col-body.over{outline:1px dashed var(--accent);outline-offset:6px;border-radius:var(--r-sm)}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;cursor:grab}
+.tile:active{cursor:grabbing}
+.tile.dragging{opacity:.4}
+.tile p{margin:0 0 9px;font-size:13.5px;color:#E7E0D7;line-height:1.4}
+.tile.done{opacity:.68;background:#171514;border-color:#221E1D}
+.tile.done p{color:var(--muted);text-decoration:line-through;text-decoration-color:#4A443E}
+.tile-foot{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tag{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.tag.property{color:var(--accent)} .tag.finance{color:var(--teal)}
+.due{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.due.soon{color:var(--warn)} .due.over{color:#E07A5F}
+.kill{border:none;background:none;color:#3C3532;font-size:15px;padding:0 2px;cursor:pointer;line-height:1}
+.kill:hover{color:var(--warn)}
+.addrow{display:grid;grid-template-columns:minmax(0,2.4fr) repeat(3, minmax(0,1fr)) auto;gap:10px;align-items:end}
+@media (max-width:820px){.addrow{grid-template-columns:1fr 1fr}}
+{% endblock %}
+
+{% block content %}
+
+<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:20px;flex-wrap:wrap">
+  <div>
+    <div class="eyebrow">Retirement · board</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+      <h1 class="serif" style="font-size:30px">Everything between here and there</h1>
+      <button type="button" class="askb" data-scope="board"
+              title="Ask B about the board" aria-label="Ask B about the board">B</button>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>{{ summary.counts.open }}</b><span>open</span></div>
+    <div class="stat"><b style="color:var(--accent)">{{ summary.due_soon|length }}</b><span>due soon</span></div>
+    <div class="stat"><b style="color:var(--good)">{{ summary.counts.done }}</b><span>done</span></div>
+  </div>
+</div>
+
+<div class="card summary">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.6"
+       stroke-linecap="round" style="flex:0 0 16px;margin-top:3px" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
+  <p>{{ summary.sentence }}</p>
+</div>
+
+<div class="card" style="margin-top:14px">
+  <form method="post" action="/board/card" class="addrow">
+    <div>
+      <label for="title">Add something</label>
+      <input id="title" name="title" placeholder="Apply for a codice fiscale" required>
+    </div>
+    <div>
+      <label for="column">Column</label>
+      <select id="column" name="column">
+        {% for col in columns %}{% if not col.terminal %}<option value="{{ col.id }}">{{ col.label }}</option>{% endif %}{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="tag">Tag</label>
+      <select id="tag" name="tag">
+        <option value=""></option>
+        {% for tag in config.tags %}<option value="{{ tag }}">{{ tag }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="due">Due</label>
+      <input id="due" name="due" type="date">
+    </div>
+    <button type="submit" class="primary">Add</button>
+  </form>
+</div>
+
+{% if not summary.counts.open and not summary.counts.done %}
+  <div class="card empty" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap">
+    <span>Empty board. Add what is on your mind above — or start from the steps almost every
+          Italian purchase goes through and delete what does not apply.</span>
+    <form method="post" action="/board/starter" style="margin:0">
+      <button type="submit">Start me off</button>
+    </form>
+  </div>
+{% endif %}
+
+<div class="cols">
+  {% for col in columns %}
+    <section class="col {% if col.accent %}accent{% endif %}">
+      <div class="col-head">
+        <span class="eyebrow">{{ col.label }}</span>
+        <span class="mono" style="font-size:11px;color:var(--dim)">{{ (cards[col.id] or [])|length }}</span>
+      </div>
+      <div class="col-body" data-column="{{ col.id }}">
+        {% for card in cards[col.id] or [] %}
+          <article class="tile {% if col.terminal %}done{% endif %}" draggable="true" data-card="{{ card.id }}">
+            <p>{{ card.title }}</p>
+            <div class="tile-foot">
+              <span class="tag {{ card.tag }}">{{ card.tag }}</span>
+              <span style="display:flex;align-items:center;gap:8px">
+                {% if col.terminal and card.done_at %}
+                  <span class="due">{{ card.done_at[:10] }}</span>
+                {% elif card.due %}
+                  {% set overdue = card.due < today %}
+                  <span class="due {% if overdue %}over{% else %}soon{% endif %}">
+                    {%- if overdue %}overdue{% else %}{{ card.due }}{% endif -%}
+                  </span>
+                {% endif %}
+                <form method="post" action="/board/delete" style="margin:0" onsubmit="return confirm('Delete this card?')">
+                  <input type="hidden" name="card_id" value="{{ card.id }}">
+                  <button class="kill" type="submit" title="Delete" aria-label="Delete card">×</button>
+                </form>
+              </span>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+</div>
+
+<p class="foot">
+  Four columns and one card shape, on purpose. Drag a card to move it; dropping into
+  <b style="font-weight:500;color:var(--ink-2)">Done</b> stamps the date. The line at the top is
+  the only part written for you — everything else is yours.
+</p>
+{% endblock %}
+
+{% block script %}
+<script>
+// Drag and drop, with the server as the only source of truth. A drop posts the
+// move and reloads rather than reconciling two copies of the board in the
+// browser -- the board is small, and a card that visibly snaps back is better
+// than one that looks moved and is not.
+(function () {
+  let dragging = null;
+
+  document.querySelectorAll('.tile').forEach(function (tile) {
+    tile.addEventListener('dragstart', function (event) {
+      dragging = tile;
+      tile.classList.add('dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', tile.dataset.card);
+    });
+    tile.addEventListener('dragend', function () {
+      tile.classList.remove('dragging');
+      dragging = null;
+    });
+  });
+
+  function insertionTarget(body, y) {
+    // The first card whose midpoint is below the pointer is what we land above.
+    const others = Array.from(body.querySelectorAll('.tile:not(.dragging)'));
+    for (const tile of others) {
+      const box = tile.getBoundingClientRect();
+      if (y < box.top + box.height / 2) return tile;
+    }
+    return null;
+  }
+
+  document.querySelectorAll('.col-body').forEach(function (body) {
+    body.addEventListener('dragover', function (event) {
+      if (!dragging) return;
+      event.preventDefault();
+      body.classList.add('over');
+      const before = insertionTarget(body, event.clientY);
+      if (before) body.insertBefore(dragging, before);
+      else body.appendChild(dragging);
+    });
+    body.addEventListener('dragleave', function () { body.classList.remove('over'); });
+    body.addEventListener('drop', function (event) {
+      if (!dragging) return;
+      event.preventDefault();
+      body.classList.remove('over');
+      const moved = dragging;
+      const next = moved.nextElementSibling;
+      fetch('/board/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          card_id: Number(moved.dataset.card),
+          column: body.dataset.column,
+          before_id: next && next.dataset.card ? Number(next.dataset.card) : null
+        })
+      }).then(function () { window.location.reload(); })
+        .catch(function () { window.location.reload(); });
+    });
+  });
+})();
+</script>
+{% endblock %}
