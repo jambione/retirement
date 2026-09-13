@@ -71,6 +71,11 @@ def cmd_doctor(args) -> int:
         f"{p['label']}{'' if p['ready'] else ' (missing)'}" for p in ask.available()
     ))
     print(f"           default: {ask.default_provider() or 'none available'}")
+    print("scoring    " + (
+        f"uses {ask.default_provider()} — the same subscription, no API key needed"
+        if ask.default_provider() else
+        "NO backend — listings score on numeric signals only, board summary is deterministic"
+    ))
 
     for name in Profile.load().enabled_modules():
         print(f"module     {name}")

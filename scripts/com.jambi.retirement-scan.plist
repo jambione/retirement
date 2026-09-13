@@ -21,6 +21,14 @@
   StartCalendarInterval fires on wake if the machine was asleep at the
   scheduled time, so a sleeping mini catches up rather than skipping the day.
 
+  The gui/<uid> domain is load-bearing here, not just convenient. Listing
+  assessment and the board summary run through the `claude` CLI on its
+  subscription login, and that credential lives in the console user's login
+  Keychain -- which an ssh session cannot read. Bootstrapped into gui/<uid>
+  this job runs inside that session and can. Run the same command over plain
+  ssh and the CLI comes back logged out, the assessment silently returns
+  nothing, and every listing scores on numeric signals alone.
+
   Install: scripts/install_agents.sh
 -->
 <plist version="1.0">

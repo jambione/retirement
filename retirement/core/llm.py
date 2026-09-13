@@ -1,12 +1,16 @@
-"""Optional Anthropic layer.
+"""The structured-AI layer: prompts in, parsed JSON out.
 
-Two jobs:
-  1. turn the plain-English `prompt` in the config into structured filters;
-  2. judge a listing's own words against the parts of the brief that are not
-     numeric -- community feel, authenticity, whether it reads like a rental.
+It owns NO credentials and knows nothing about any vendor. Every call goes
+through `ask`, the same provider layer the B button uses, so the scoring and
+the board summary run on whichever subscription CLI is installed on the
+machine -- `claude -p`, `grok`, `agy` -- rather than billing an API key.
 
-Everything here degrades to a no-op when ANTHROPIC_API_KEY is unset, so the
-pipeline still runs (and still scores on the numeric signals) without it.
+That was the bug this replaced: the B button used the subscription, and the
+nightly scoring quietly used the Anthropic SDK. Same models, two credential
+paths, and the one that cost money was the one running unattended at 07:15.
+
+Everything degrades to a no-op when no backend is installed, so the pipeline
+still runs and still scores on the numeric signals.
 """
 from __future__ import annotations
 
@@ -14,40 +18,39 @@ import json
 import re
 from typing import Any
 
-from retirement.core.config import env
-
-_CLIENT = None
+# A CLI is a process, not an HTTP call: assessment of a batch is tens of
+# seconds, not hundreds of milliseconds. Generous, but bounded.
+ASSESS_TIMEOUT = 300.0
+PARSE_TIMEOUT = 120.0
 
 
 def available() -> bool:
-    return bool(env("ANTHROPIC_API_KEY"))
+    """True when ANY backend can answer — CLI or API key."""
+    from retirement.core import ask
+
+    return ask.default_provider() is not None
 
 
-def _client():
-    global _CLIENT
-    if _CLIENT is None:
-        import anthropic
+def backend() -> str | None:
+    from retirement.core import ask
 
-        _CLIENT = anthropic.Anthropic(api_key=env("ANTHROPIC_API_KEY"))
-    return _CLIENT
+    return ask.default_provider()
 
 
-def _model() -> str:
-    return env("RETIREMENT_LLM_MODEL", "claude-sonnet-4-5") or "claude-sonnet-4-5"
+def _ask(system: str, user: str, max_tokens: int = 1200, timeout: float | None = None) -> str:
+    """One turn. The CLIs take a single prompt, so the system framing is folded
+    into it rather than passed separately."""
+    from retirement.core import ask
 
-
-def _ask(system: str, user: str, max_tokens: int = 1200) -> str:
-    msg = _client().messages.create(
-        model=_model(),
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
-    return "".join(block.text for block in msg.content if block.type == "text")
+    _ = max_tokens  # the CLIs size their own output
+    result = ask.ask(f"{system}\n\n{user}", timeout=timeout or PARSE_TIMEOUT)
+    return result["answer"]
 
 
 def _extract_json(text: str) -> dict[str, Any]:
-    match = re.search(r"\{.*\}", text, re.S)
+    """CLIs wrap answers in prose more often than the API does, so take the
+    outermost JSON object rather than trusting the whole response."""
+    match = re.search(r"\{.*\}", text or "", re.S)
     if not match:
         return {}
     try:
@@ -62,15 +65,15 @@ Return ONLY a JSON object with these keys:
   nice_to_have:   list of short phrases
   deal_breakers:  list of short phrases
   character:      one sentence describing the kind of town and house wanted
-Do not invent budgets, sizes or locations that the brief does not state."""
+No preamble, no explanation, no code fence. Do not invent budgets, sizes or
+locations that the brief does not state."""
 
 
 def parse_prompt(prompt: str) -> dict[str, Any]:
-    """Plain English brief -> structured hints. Returns {} if unavailable."""
     if not available() or not prompt.strip():
         return {}
     try:
-        return _extract_json(_ask(PARSE_SYSTEM, prompt.strip(), max_tokens=800))
+        return _extract_json(_ask(PARSE_SYSTEM, prompt.strip(), timeout=PARSE_TIMEOUT))
     except Exception:
         return {}
 
@@ -83,8 +86,9 @@ For each listing return an object with:
   rental_score:     0-100, likely short-let demand given location and features
   note:             one sentence, max 25 words, the single most useful thing
   concerns:         list of short phrases, or []
-Return ONLY a JSON object {"assessments": [...]}. Judge only from the text you
-are given. If the text is too thin to judge, use 50 and say so in the note."""
+Return ONLY a JSON object {"assessments": [...]}. No preamble, no code fence.
+Judge only from the text you are given. If the text is too thin to judge, use
+50 and say so in the note."""
 
 
 def assess_listings(brief: str, listings: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -110,7 +114,7 @@ def assess_listings(brief: str, listings: list[dict[str, Any]]) -> dict[str, dic
         f"LISTINGS:\n{json.dumps(payload, ensure_ascii=False)}"
     )
     try:
-        data = _extract_json(_ask(ASSESS_SYSTEM, user, max_tokens=4000))
+        data = _extract_json(_ask(ASSESS_SYSTEM, user, timeout=ASSESS_TIMEOUT))
     except Exception:
         return {}
     out: dict[str, dict[str, Any]] = {}

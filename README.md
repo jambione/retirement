@@ -82,7 +82,8 @@ by `config/property.yaml`:
 - **airport access** — straight-line distance to the nearest international
   airport × 1.3 for roads. A ranking signal, not a routing answer.
 - **town character** — Claude reads the listing text against the brief in
-  `prompt`. Skipped without `ANTHROPIC_API_KEY`; everything else still scores.
+  `prompt`, through the subscription CLI. Skipped when no backend is installed;
+  everything else still scores.
 - **condition** — move-in ready vs needs everything.
 - **rental potential** — pool, historic centre, lake or sea view, terrace.
 
@@ -102,6 +103,11 @@ you what that section's data actually contains, then — if you want to check �
 shows the exact text that will be sent, before anything is sent. Then you pick
 a backend and ask.
 
+**The same layer does the scoring.** Town character, condition and rental
+assessment, the plain-English brief parsing, and the board's summary sentence
+all go through it too — so the nightly cycle runs on your subscription rather
+than billing an API key. Nothing needs configuring: it finds what is installed.
+
 Backends are whichever of these exist on the machine, in this order:
 
 | Backend | How it authenticates |
@@ -109,7 +115,7 @@ Backends are whichever of these exist on the machine, in this order:
 | `claude_cli` | `claude -p`, the subscription login |
 | `grok` | the Grok CLI, SuperGrok login |
 | `agy` | `agy -p`, Gemini subscription |
-| `anthropic_api` | `ANTHROPIC_API_KEY`, billed per call |
+| `anthropic_api` | `ANTHROPIC_API_KEY`, billed per call — last resort, for a machine with no CLI |
 
 All three CLIs are agentic coding tools pointed at a working directory, so each
 is invoked here with its file and shell tools explicitly disallowed and its cwd

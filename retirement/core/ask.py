@@ -139,14 +139,17 @@ def _grok_cli(prompt: str, timeout: float) -> str:
 
 
 def _anthropic_api(prompt: str, timeout: float) -> str:
-    from retirement.core import llm
+    """The paid fallback, last in preference. Calls the SDK directly -- routing
+    it through llm would recurse, since llm now calls back into this module."""
+    import anthropic
 
-    return llm._ask(
-        "You are answering questions about a couple's property search and "
-        "retirement plan, using only the data you are given.",
-        prompt,
-        max_tokens=2000,
-    ).strip()
+    client = anthropic.Anthropic(api_key=env("ANTHROPIC_API_KEY"))
+    message = client.messages.create(
+        model=env("RETIREMENT_LLM_MODEL", "claude-sonnet-4-5") or "claude-sonnet-4-5",
+        max_tokens=4000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return "".join(b.text for b in message.content if b.type == "text").strip()
 
 
 def _has(name_env: str, default: str) -> Callable[[], bool]:

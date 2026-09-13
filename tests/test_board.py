@@ -77,10 +77,9 @@ def test_due_soon_ignores_finished_cards(conn):
     assert soon[0]["days_left"] == 10
 
 
-def test_summary_without_an_llm_names_the_nearest_deadline(conn, monkeypatch):
+def test_summary_without_an_llm_names_the_nearest_deadline(conn):
     from datetime import date, timedelta
 
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     store.add(conn, "narrow to four towns", "soon", "property",
               due=(date.today() + timedelta(days=5)).isoformat())
     data = summary.build(conn, CONFIG)
@@ -88,15 +87,13 @@ def test_summary_without_an_llm_names_the_nearest_deadline(conn, monkeypatch):
     assert data["counts"]["open"] == 1
 
 
-def test_summary_of_an_empty_board_does_not_invent_work(conn, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+def test_summary_of_an_empty_board_does_not_invent_work(conn):
     data = summary.build(conn, CONFIG)
     assert data["counts"]["open"] == 0
     assert "Nothing is blocked" in data["sentence"]
 
 
-def test_module_run_reports_the_board(conn, monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+def test_module_run_reports_the_board(conn):
     from retirement.modules.board.pipeline import BoardModule
 
     store.add(conn, "one", "soon")
