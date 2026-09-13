@@ -16,4 +16,10 @@ def no_real_model(monkeypatch):
     against their subscription, and non-deterministic. Tests that exercise the
     AI path opt in by patching the provider layer themselves.
     """
-    monkeypatch.setattr("retirement.core.ask.default_provider", lambda: None)
+    from retirement.core import ask
+
+    original = ask.default_provider
+    monkeypatch.setattr(ask, "default_provider", lambda: None)
+    # Handed back so a test that is ABOUT provider selection can put the real
+    # one back: `monkeypatch.setattr(ask, "default_provider", no_real_model)`.
+    return original

@@ -90,7 +90,9 @@ def _run(cmd: list[str], timeout: float, env_overrides: dict[str, str] | None = 
     out, err = (proc.stdout or "").strip(), (proc.stderr or "").strip()
     if proc.returncode != 0 and not out:
         raise RuntimeError(f"{cmd[0]} exit {proc.returncode}: {(err or 'no output')[:300]}")
-    text = _text_from(out)
+    # agy needs its envelope intact (see _unwrap_agy); everything else is
+    # happy with the generic extraction.
+    text = out if "agy" in os.path.basename(cmd[0]) else _text_from(out)
     if not text:
         raise RuntimeError(f"{cmd[0]} returned nothing ({err[:200] or 'no stderr'})")
     return text
@@ -107,15 +109,57 @@ def _claude_cli(prompt: str, timeout: float) -> str:
     )
 
 
+# Markers the Antigravity CLI uses when its subscription login has lapsed.
+# Worth detecting by hand: a logged-out agy returns a well-formed JSON envelope
+# with an error inside it, so the generic extractor happily reports "returned
+# nothing" for what is actually a five-second fix.
+AGY_LOGGED_OUT = (
+    "authentication required", "authentication failed",
+    "not logged into antigravity", "please sign in",
+    "run 'agy' to log in", "run agy to log in",
+    "launch the cli without arguments to sign in",
+)
+
+
 def _agy_cli(prompt: str, timeout: float) -> str:
     binary = shutil.which(env("ASK_AGY_BIN", "agy") or "agy")
-    return _run(
+    raw = _run(
         [binary, "-p", prompt,
          "--output-format", "json",
+         # Without this agy applies its own, shorter print timeout and returns
+         # a truncated answer on a long assessment.
+         "--print-timeout", f"{int(max(30.0, timeout))}s",
          "--disable-slash-commands",
-         "--model", env("ASK_AGY_MODEL", "gemini-3.7-flash-high") or "gemini-3.7-flash-high"],
+         "--model", env("ASK_AGY_MODEL", "gemini-3.7-flash-high") or "gemini-3.7-flash-high",
+         "--effort", env("ASK_AGY_EFFORT", "high") or "high"],
         timeout,
     )
+    return _unwrap_agy(raw)
+
+
+def _unwrap_agy(raw: str) -> str:
+    """agy answers in an envelope: {status, response, usage}. A non-SUCCESS
+    status carries the real reason, and reporting it beats reporting silence."""
+    try:
+        envelope = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return raw
+    if not isinstance(envelope, dict) or "response" not in envelope and "status" not in envelope:
+        return raw
+
+    status = str(envelope.get("status") or "").strip().upper()
+    if status and status != "SUCCESS":
+        detail = str(envelope.get("error") or status)
+        if any(marker in detail.lower() for marker in AGY_LOGGED_OUT):
+            raise RuntimeError(
+                "Antigravity CLI is not logged in. Run `agy` with no arguments "
+                "from a Terminal ON the mini (an ssh session cannot reach the "
+                "login Keychain), then try again."
+            )
+        raise RuntimeError(f"Antigravity CLI {status}: {detail[:240]}")
+
+    text = str(envelope.get("response") or envelope.get("result") or "").strip()
+    return text or raw
 
 
 def _grok_cli(prompt: str, timeout: float) -> str:
@@ -156,13 +200,16 @@ def _has(name_env: str, default: str) -> Callable[[], bool]:
     return lambda: bool(shutil.which(env(name_env, default) or default))
 
 
+# Order is preference when ASK_DEFAULT_PROVIDER is unset. Antigravity first:
+# it is the subscription this project is meant to spend, and leaving claude
+# first meant the mini silently used the trading desk's login instead.
 PROVIDERS: list[Provider] = [
+    Provider("agy", "Antigravity", "agy -p, Gemini subscription",
+             _agy_cli, _has("ASK_AGY_BIN", "agy")),
     Provider("claude_cli", "Claude", "claude -p, subscription login",
              _claude_cli, _has("ASK_CLAUDE_BIN", "claude")),
     Provider("grok", "Grok", "grok CLI, SuperGrok login",
              _grok_cli, _has("ASK_GROK_BIN", "grok")),
-    Provider("agy", "Antigravity", "agy -p, Gemini subscription",
-             _agy_cli, _has("ASK_AGY_BIN", "agy")),
     Provider("anthropic_api", "Claude (API key)", "billed to ANTHROPIC_API_KEY",
              _anthropic_api, lambda: bool(env("ANTHROPIC_API_KEY"))),
 ]
@@ -180,6 +227,22 @@ def default_provider() -> str | None:
     if preferred and any(p.id == preferred and p.ready() for p in PROVIDERS):
         return preferred
     return next((p.id for p in PROVIDERS if p.ready()), None)
+
+
+def preference_note() -> str | None:
+    """A sentence when the configured backend is NOT the one in use, so a
+    silent fallback to a different subscription is visible."""
+    preferred = env("ASK_DEFAULT_PROVIDER")
+    actual = default_provider()
+    if not preferred or preferred == actual:
+        return None
+    known = {p.id for p in PROVIDERS}
+    if preferred not in known:
+        return f"ASK_DEFAULT_PROVIDER={preferred} is not a known backend; using {actual}."
+    return (
+        f"ASK_DEFAULT_PROVIDER={preferred} is set but that CLI is not installed "
+        f"here — falling back to {actual or 'nothing'}."
+    )
 
 
 def ask(prompt: str, provider: str | None = None, timeout: float = DEFAULT_TIMEOUT) -> dict:

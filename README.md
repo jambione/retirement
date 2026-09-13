@@ -108,23 +108,26 @@ assessment, the plain-English brief parsing, and the board's summary sentence
 all go through it too — so the nightly cycle runs on your subscription rather
 than billing an API key. Nothing needs configuring: it finds what is installed.
 
-Backends are whichever of these exist on the machine, in this order:
+This project runs on the **Antigravity (`agy`) subscription** —
+`ASK_DEFAULT_PROVIDER=agy` pins it, so a missing `agy` is reported rather than
+silently spending the trading desk's Claude login instead. Backends, in
+preference order when nothing is pinned:
 
 | Backend | How it authenticates |
 |---|---|
+| `agy` | `agy -p`, Gemini subscription — **what this project uses** |
 | `claude_cli` | `claude -p`, the subscription login |
 | `grok` | the Grok CLI, SuperGrok login |
-| `agy` | `agy -p`, Gemini subscription |
 | `anthropic_api` | `ANTHROPIC_API_KEY`, billed per call — last resort, for a machine with no CLI |
 
 All three CLIs are agentic coding tools pointed at a working directory, so each
 is invoked here with its file and shell tools explicitly disallowed and its cwd
 set to `var/ask/` — "summarise this shortlist" must never turn into a commit.
 
-If a CLI reports itself logged out, that is the ssh-Keychain problem the
-trading desk has too: restart the service through the LaunchAgent
-(`launchctl kickstart -k gui/$(id -u)/com.jambi.retirement-web`) rather than
-logging in again.
+If `agy` reports itself logged out, run `agy` with no arguments from a Terminal
+**on the mini** — its credential lives in the console user's login Keychain,
+which an ssh session cannot read. That is the same problem the trading desk
+hits, and why these jobs are bootstrapped into `gui/<uid>`.
 
 ## Net worth
 

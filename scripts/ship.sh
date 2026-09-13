@@ -199,6 +199,31 @@ echo "  ✓ using the trading desk's credentials ($TRADING_SECRETS)"
 echo "    Digests go to its notify_to unless DIGEST_TO is set in $ENV_FILE."
 REMOTE
 
+# ── 3.6 ai backend ─────────────────────────────────────────────────────────
+say "AI"
+ssh_mini "MINI_REPO='$MINI_REPO' bash -s" <<'REMOTE'
+set -uo pipefail
+PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+ENV_FILE="$MINI_REPO/.env"
+[ -f "$ENV_FILE" ] || cp "$MINI_REPO/.env.example" "$ENV_FILE"
+
+if ! grep -q '^ASK_DEFAULT_PROVIDER=' "$ENV_FILE"; then
+  printf '\nASK_DEFAULT_PROVIDER=agy\n' >> "$ENV_FILE"
+  echo "  · pinned ASK_DEFAULT_PROVIDER=agy"
+fi
+WANT="$(grep '^ASK_DEFAULT_PROVIDER=' "$ENV_FILE" | tail -1 | cut -d= -f2-)"
+echo "  · configured backend: ${WANT:-<unset>}"
+
+if command -v agy >/dev/null 2>&1; then
+  echo "  ✓ agy found at $(command -v agy)"
+else
+  echo "  ✗ agy is NOT on this machine's PATH."
+  echo "    Scoring and the board summary will fall back to whatever else is"
+  echo "    installed, which is not the subscription you asked for."
+fi
+REMOTE
+ssh_mini "cd '$MINI_REPO' && ./retire doctor 2>/dev/null | grep -E '^(ask B|scoring)|^ +(!|default)'" || true
+
 # ── 4. health ──────────────────────────────────────────────────────────────
 say "Health"
 ssh_mini "cd '$MINI_REPO' && ./retire status" || true

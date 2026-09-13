@@ -71,8 +71,11 @@ def cmd_doctor(args) -> int:
         f"{p['label']}{'' if p['ready'] else ' (missing)'}" for p in ask.available()
     ))
     print(f"           default: {ask.default_provider() or 'none available'}")
+    note = ask.preference_note()
+    if note:
+        print(f"           ! {note}")
     print("scoring    " + (
-        f"uses {ask.default_provider()} — the same subscription, no API key needed"
+        f"listing assessment and the board summary run on {ask.default_provider()}"
         if ask.default_provider() else
         "NO backend — listings score on numeric signals only, board summary is deterministic"
     ))

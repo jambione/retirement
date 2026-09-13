@@ -99,3 +99,79 @@ def test_subscription_clis_are_preferred_over_the_paid_api():
     assert order.index("claude_cli") < order.index("anthropic_api")
     assert order.index("grok") < order.index("anthropic_api")
     assert order.index("agy") < order.index("anthropic_api")
+
+
+# ── the Antigravity envelope ───────────────────────────────────────────────
+def test_agy_success_envelope_is_unwrapped():
+    assert ask._unwrap_agy('{"status":"SUCCESS","response":"the answer"}') == "the answer"
+
+
+def test_agy_logged_out_says_what_to_do_rather_than_returning_silence():
+    # A logged-out agy returns a WELL-FORMED envelope with the error inside, so
+    # generic extraction reports "returned nothing" for a five-second fix.
+    with pytest.raises(RuntimeError, match="not logged in"):
+        ask._unwrap_agy('{"status":"ERROR","error":"Authentication required"}')
+
+
+def test_agy_other_errors_keep_their_reason():
+    with pytest.raises(RuntimeError, match="model overloaded"):
+        ask._unwrap_agy('{"status":"ERROR","error":"model overloaded"}')
+
+
+def test_agy_plain_text_passes_through():
+    assert ask._unwrap_agy("not json at all") == "not json at all"
+
+
+def test_antigravity_is_preferred_over_the_other_subscriptions():
+    order = [p.id for p in ask.PROVIDERS]
+    assert order[0] == "agy"
+
+
+# ── pinning, and noticing when the pin cannot be honoured ──────────────────
+def test_a_pinned_backend_wins_over_preference_order(monkeypatch, no_real_model):
+    monkeypatch.setattr(ask, "default_provider", no_real_model)
+    monkeypatch.setenv("ASK_DEFAULT_PROVIDER", "grok")
+    monkeypatch.setattr(ask, "PROVIDERS", [
+        ask.Provider("agy", "Antigravity", "", lambda p, t: "", lambda: True),
+        ask.Provider("grok", "Grok", "", lambda p, t: "", lambda: True),
+    ])
+    assert ask.default_provider() == "grok"
+    assert ask.preference_note() is None
+
+
+def test_a_pinned_backend_that_is_missing_is_reported_not_silently_replaced(
+    monkeypatch, no_real_model
+):
+    monkeypatch.setattr(ask, "default_provider", no_real_model)
+    monkeypatch.setenv("ASK_DEFAULT_PROVIDER", "agy")
+    monkeypatch.setattr(ask, "PROVIDERS", [
+        ask.Provider("agy", "Antigravity", "", lambda p, t: "", lambda: False),
+        ask.Provider("claude_cli", "Claude", "", lambda p, t: "", lambda: True),
+    ])
+    assert ask.default_provider() == "claude_cli"       # still works
+    note = ask.preference_note()
+    assert note and "agy" in note and "claude_cli" in note   # but says so
+
+
+def test_an_unknown_pin_is_reported(monkeypatch, no_real_model):
+    monkeypatch.setattr(ask, "default_provider", no_real_model)
+    monkeypatch.setenv("ASK_DEFAULT_PROVIDER", "gpt5")
+    monkeypatch.setattr(ask, "PROVIDERS", [
+        ask.Provider("agy", "Antigravity", "", lambda p, t: "", lambda: True),
+    ])
+    assert "not a known backend" in (ask.preference_note() or "")
+
+
+def test_agy_is_invoked_with_a_print_timeout_matching_the_call(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, timeout, env_overrides=None):
+        captured["cmd"] = cmd
+        return '{"status":"SUCCESS","response":"ok"}'
+
+    monkeypatch.setattr(ask.shutil, "which", lambda _n: "/opt/homebrew/bin/agy")
+    monkeypatch.setattr(ask, "_run", fake_run)
+    assert ask._agy_cli("a prompt", 300.0) == "ok"
+    cmd = captured["cmd"]
+    assert "--print-timeout" in cmd and "300s" in cmd
+    assert "--output-format" in cmd and "json" in cmd
