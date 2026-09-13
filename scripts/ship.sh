@@ -192,6 +192,21 @@ curl -sI --max-time 8 "https://trading.jbrasfield.com" >/dev/null 2>&1 \
   && ok "trading.jbrasfield.com still fine" \
   || no "trading.jbrasfield.com not answering — check the tunnel"
 
+# Is anything in front of it? A Cloudflare Access app answers with a redirect
+# to <team>.cloudflareaccess.com; the bare app answers 200. This is a report,
+# not a gate -- but an open URL and a finance page are worth saying out loud.
+HEADERS="$(curl -sI --max-time 8 "https://$HOSTNAME_PUBLIC/" 2>/dev/null || true)"
+if printf '%s' "$HEADERS" | grep -qi 'cloudflareaccess.com'; then
+  ok "Cloudflare Access is in front of it"
+elif printf '%s' "$HEADERS" | grep -qi '^HTTP/.* 200'; then
+  printf '  \033[33m!\033[0m %s\n' "NO AUTH: anyone with the URL can read this site,"
+  echo "    including /finance — account names, balances and net worth."
+  echo "    Turn it on:  Zero Trust > Access > Applications > Add > Self-hosted"
+  echo "                 domain $HOSTNAME_PUBLIC, policy: your two email addresses"
+  echo "    Or hold the balance sheet back until then:"
+  echo "                 set modules.finance.enabled to false in config/profile.yaml"
+fi
+
 # ── 5. what still needs you ────────────────────────────────────────────────
 say "Still on you"
 ssh_mini "cd '$MINI_REPO' && ./retire doctor 2>/dev/null | grep '^email'" || true
