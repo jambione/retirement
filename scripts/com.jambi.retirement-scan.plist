@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  com.jambi.retirement-scan — the nightly property scan and email digest.
+  com.jambi.retirement-scan — the nightly cycle: property scan, email digest,
+  and the finance export pickup (anything dropped in var/inbox, plus the IMAP
+  mailbox when that route is switched on).
 
   07:15 local, once a day. RunAtLoad is false on purpose: installing the agent
   should not fire an API-spending run, and a deploy kickstarts the WEB job, not
@@ -30,7 +32,7 @@
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>cd /Users/jambimac/repo/retirement &amp;&amp; ./retire scan</string>
+    <string>cd /Users/jambimac/repo/retirement &amp;&amp; ./retire cycle</string>
   </array>
 
   <key>StartCalendarInterval</key>

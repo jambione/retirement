@@ -33,11 +33,47 @@ def _module(name: str, conn):
 
 def cmd_run(args) -> int:
     conn = db.connect()
-    module = _module(args.module, conn)
-    summary = module.run(dry_run=args.dry_run)
-    print(json.dumps(summary, indent=2, default=str))
-    for warning in summary.get("warnings", []):
-        print(f"warning: {warning}", file=sys.stderr)
+    names = (
+        list(Profile.load().enabled_modules())
+        if args.module == "all" else [args.module]
+    )
+    summaries = {}
+    for name in names:
+        if name not in REGISTRY:
+            print(f"warning: module '{name}' has no implementation", file=sys.stderr)
+            continue
+        summaries[name] = _module(name, conn).run(dry_run=args.dry_run)
+    print(json.dumps(summaries if len(summaries) != 1 else next(iter(summaries.values())),
+                     indent=2, default=str))
+    for summary in summaries.values():
+        for warning in summary.get("warnings", []):
+            print(f"warning: {warning}", file=sys.stderr)
+    return 0
+
+
+def cmd_doctor(args) -> int:
+    """What is configured on this machine, without printing a single secret."""
+    from retirement.core import ask, notify
+
+    conn = db.connect()
+    print(f"database   {db.db_path()}")
+    print(f"idealista  {db.usage_this_month(conn, 'idealista')} calls used this month")
+
+    status = notify.status()
+    print(f"secrets    {status['secrets_file']}")
+    print("email      " + (
+        f"ready — {status['smtp_user']}@{status['smtp_host']}:{status['smtp_port']} "
+        f"-> {', '.join(status['digest_to'])}"
+        if status["configured"] else "NOT configured (smtp_host / smtp_user / smtp_pass / digest_to)"
+    ))
+
+    print("ask B      " + ", ".join(
+        f"{p['label']}{'' if p['ready'] else ' (missing)'}" for p in ask.available()
+    ))
+    print(f"           default: {ask.default_provider() or 'none available'}")
+
+    for name in Profile.load().enabled_modules():
+        print(f"module     {name}")
     return 0
 
 
@@ -101,7 +137,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_run = sub.add_parser("run", help="run one module cycle")
-    p_run.add_argument("module", nargs="?", default="property")
+    p_run.add_argument("module", nargs="?", default="property",
+                       help="module name, or 'all' for every enabled module")
     p_run.add_argument("--dry-run", action="store_true", help="score but do not email")
     p_run.set_defaults(func=cmd_run)
 
@@ -124,6 +161,9 @@ def main(argv: list[str] | None = None) -> int:
     p_serve.add_argument("--port", type=int, default=8891)
     p_serve.add_argument("--reload", action="store_true")
     p_serve.set_defaults(func=cmd_serve)
+
+    p_doctor = sub.add_parser("doctor", help="what is configured on this machine")
+    p_doctor.set_defaults(func=cmd_doctor)
 
     args = parser.parse_args(argv)
     _setup(args.verbose)

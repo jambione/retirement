@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from retirement.core import db
+from retirement.core import db, notify
 from retirement.core.config import Profile, dump_yaml, load_dotenv, load_yaml
 from retirement.core.module import REGISTRY, load_registry
 
@@ -263,13 +263,15 @@ def board_starter():
 # ── finance ────────────────────────────────────────────────────────────────
 @app.get("/finance", response_class=HTMLResponse)
 def finance(request: Request):
-    from retirement.modules.finance import store
+    from retirement.modules.finance import pickup, store
 
     conn = db.connect()
     store.migrate(conn)
+    pickup.migrate(conn)
     config = _finance_config()
     snapshot = store.latest(conn)
     prior = store.previous(conn, snapshot["id"]) if snapshot else None
+    inbox, _processed = pickup.folder_paths(config)
     purchase = config.get("purchase") or {}
     cost_usd = (
         float(purchase.get("budget_eur", 0)) * float(purchase.get("eur_usd", 1))
@@ -287,6 +289,12 @@ def finance(request: Request):
             "history": store.history(conn),
             "categories": store.by_category(snapshot) if snapshot else [],
             "purchase_cost_usd": cost_usd,
+            # Shown on screen, so tilde-shorten it rather than printing a
+            # forty-character home directory.
+            "inbox": str(inbox).replace(str(Path.home()), "~"),
+            "mailbox_on": bool(((config.get("pickup") or {}).get("mailbox") or {}).get("enabled")
+                               and pickup.mailbox_configured()),
+            "email": notify.status(),
             "import_error": request.query_params.get("error", ""),
             **_chrome(),
         },
@@ -295,19 +303,36 @@ def finance(request: Request):
 
 @app.post("/finance/import")
 async def finance_import(file: UploadFile = File(...)):
-    from retirement.modules.finance import importer, store
+    from retirement.modules.finance import pickup, store
 
     conn = db.connect()
     store.migrate(conn)
     data = await file.read()
-    try:
-        parsed = importer.parse(data, file.filename or "export.csv", _finance_config())
-    except importer.ImportError_ as exc:
-        return RedirectResponse(f"/finance?error={quote(str(exc))}", status_code=303)
-    except Exception as exc:
-        return RedirectResponse(f"/finance?error={quote(f'Could not read that file: {exc}')}",
-                                status_code=303)
-    store.save_snapshot(conn, parsed)
+    # Same path as the automatic routes, so a file you drag in after it has
+    # already been picked up from the folder does not double-count.
+    result = pickup.ingest(conn, data, file.filename or "export.csv", "upload",
+                           _finance_config())
+    if result["status"] == "unreadable":
+        return RedirectResponse(f"/finance?error={quote(result['error'])}", status_code=303)
+    if result["status"] == "duplicate":
+        return RedirectResponse(
+            "/finance?error=" + quote("Already imported — that file is byte-identical to one "
+                                      "picked up earlier, so nothing was added."),
+            status_code=303)
+    return RedirectResponse("/finance", status_code=303)
+
+
+@app.post("/finance/pickup")
+def finance_pickup():
+    from retirement.modules.finance import pickup
+
+    result = pickup.run(db.connect(), _finance_config())
+    problems = result["problems"]
+    if problems:
+        first = problems[0]
+        return RedirectResponse(
+            "/finance?error=" + quote(f"{first['filename']}: {first.get('error', 'failed')}"),
+            status_code=303)
     return RedirectResponse("/finance", status_code=303)
 
 

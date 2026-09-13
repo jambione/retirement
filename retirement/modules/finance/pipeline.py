@@ -6,19 +6,21 @@ from __future__ import annotations
 from typing import Any
 
 from retirement.core.module import Module, register
-from retirement.modules.finance import store
+from retirement.modules.finance import pickup, store
 
 
 @register("finance")
 class FinanceModule(Module):
     def migrate(self) -> None:
         store.migrate(self.conn)
+        pickup.migrate(self.conn)
 
     def run(self, dry_run: bool = False) -> dict[str, Any]:
         self.migrate()
+        collected = pickup.run(self.conn, self.config)
         snapshot = store.latest(self.conn)
         if snapshot is None:
-            return {"snapshots": 0, "note": "No export imported yet."}
+            return {"snapshots": 0, "note": "No export imported yet.", "pickup": collected}
         prior = store.previous(self.conn, snapshot["id"])
         purchase = self.config.get("purchase") or {}
         budget_usd = (
@@ -35,4 +37,5 @@ class FinanceModule(Module):
             "since": prior["as_of"] if prior else None,
             "purchase_cost_usd": round(budget_usd, 2) if budget_usd else None,
             "warnings": snapshot["warnings"],
+            "pickup": collected,
         }

@@ -3,7 +3,9 @@
 #
 #   ./retire setup                 create .venv and install
 #   ./retire start|stop|restart|status
-#   ./retire scan [--dry-run]      one pipeline cycle, now
+#   ./retire scan [--dry-run]      one property cycle, now
+#   ./retire cycle [--dry-run]     every enabled module
+#   ./retire doctor                what is configured (no secrets printed)
 #   ./retire list                  current shortlist in the terminal
 set -uo pipefail
 
@@ -73,6 +75,8 @@ PYEOF
     ;;
 
   scan) need_venv; shift || true; "$PY" -m retirement.cli run property "$@" ;;
+  cycle) need_venv; shift || true; "$PY" -m retirement.cli run all "$@" ;;
+  doctor) need_venv; "$PY" -m retirement.cli doctor ;;
   list) need_venv; "$PY" -m retirement.cli list ;;
   *)    sed -n '2,8p' "$0"; exit 2 ;;
 esac

@@ -51,6 +51,46 @@ table.accts tr:last-child td{border-bottom:none}
       <input type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm" required>
       <div style="margin-top:14px"><button type="submit" class="primary">Import the export</button></div>
     </form>
+
+<div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px">
+      <div class="eyebrow" style="margin-bottom:10px">Automatic pickup</div>
+      <p style="margin:0 0 10px;font-size:13.5px;color:var(--ink-2);line-height:1.55">
+        Anything dropped in <span class="mono" style="font-size:12.5px;color:var(--ink)">{{ inbox }}</span>
+        is imported on the next cycle and filed into <span class="mono" style="font-size:12.5px">processed/</span>.
+      </p>
+      <p style="margin:0;font-size:12.5px;color:var(--faint)">
+        {% if mailbox_on %}
+          <span class="pill good">mailbox on</span>
+          Scheduled eMoney reports are pulled from the configured inbox too.
+        {% else %}
+          <span class="pill flat">mailbox off</span>
+          If eMoney can email you the report, add <span class="mono">imap_*</span> to
+          <span class="mono">config/secrets.json</span> and set
+          <span class="mono">pickup.mailbox.enabled</span> to switch that route on.
+        {% endif %}
+      </p>
+      <p style="margin:10px 0 0;font-size:12.5px;color:var(--faint)">
+        {% if email.configured %}
+          <span class="pill good">email ready</span> digests go to {{ email.digest_to|join(', ') }}
+        {% else %}
+          <span class="pill warn">email not configured</span>
+          nothing can be sent until <span class="mono">smtp_*</span> is set
+        {% endif %}
+      </p>
+    </div>
+    <form method="post" action="/finance/pickup" style="margin:0">
+      <button type="submit">Check for new exports</button>
+    </form>
+  </div>
+  <p class="foot" style="margin-top:16px">
+    Every file is fingerprinted by content before it is read, so the same export
+    arriving twice — re-dropped, re-sent, or in a synced folder — makes one snapshot,
+    not two. A duplicated month would show as a flat month that never happened.
+  </p>
+</div>
+
     <p class="foot" style="margin-top:18px">
       Why an export rather than a live feed: eMoney's API is licensed to advisory <i>firms</i> and
       authenticated with a certificate the firm registers — there is no individual-client tier, so
@@ -167,6 +207,46 @@ table.accts tr:last-child td{border-bottom:none}
       {% endfor %}
     </tbody>
   </table>
+</div>
+
+
+<div class="card" style="margin-top:14px">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px">
+      <div class="eyebrow" style="margin-bottom:10px">Automatic pickup</div>
+      <p style="margin:0 0 10px;font-size:13.5px;color:var(--ink-2);line-height:1.55">
+        Anything dropped in <span class="mono" style="font-size:12.5px;color:var(--ink)">{{ inbox }}</span>
+        is imported on the next cycle and filed into <span class="mono" style="font-size:12.5px">processed/</span>.
+      </p>
+      <p style="margin:0;font-size:12.5px;color:var(--faint)">
+        {% if mailbox_on %}
+          <span class="pill good">mailbox on</span>
+          Scheduled eMoney reports are pulled from the configured inbox too.
+        {% else %}
+          <span class="pill flat">mailbox off</span>
+          If eMoney can email you the report, add <span class="mono">imap_*</span> to
+          <span class="mono">config/secrets.json</span> and set
+          <span class="mono">pickup.mailbox.enabled</span> to switch that route on.
+        {% endif %}
+      </p>
+      <p style="margin:10px 0 0;font-size:12.5px;color:var(--faint)">
+        {% if email.configured %}
+          <span class="pill good">email ready</span> digests go to {{ email.digest_to|join(', ') }}
+        {% else %}
+          <span class="pill warn">email not configured</span>
+          nothing can be sent until <span class="mono">smtp_*</span> is set
+        {% endif %}
+      </p>
+    </div>
+    <form method="post" action="/finance/pickup" style="margin:0">
+      <button type="submit">Check for new exports</button>
+    </form>
+  </div>
+  <p class="foot" style="margin-top:16px">
+    Every file is fingerprinted by content before it is read, so the same export
+    arriving twice — re-dropped, re-sent, or in a synced folder — makes one snapshot,
+    not two. A duplicated month would show as a flat month that never happened.
+  </p>
 </div>
 
 <div class="card" style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap">

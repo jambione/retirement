@@ -34,3 +34,18 @@ purchase:
   budget_eur: 350000
   eur_usd: 1.08          # refresh this when it matters; it is a rough marker
   closing_cost_pct: 10
+
+# Automatic pickup. Both routes are optional and both are idempotent -- a file
+# is fingerprinted by content before it is parsed, so the same export arriving
+# twice makes one snapshot, not two.
+pickup:
+  folder: var/inbox               # drop an export here and it is imported
+  processed: var/inbox/processed  # where it is filed away afterwards
+  extensions: [.csv, .tsv, .xlsx, .xlsm]
+
+  mailbox:
+    enabled: false                # set true once imap_* is in config/secrets.json
+    folder: INBOX
+    from_contains: emoney         # only messages from this sender
+    subject_contains: ""          # optional second filter
+    mark_seen: true

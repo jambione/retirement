@@ -7,3 +7,4 @@ var/
 .pytest_cache/
 .DS_Store
 logs/
+config/secrets.json

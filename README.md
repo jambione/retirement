@@ -139,6 +139,42 @@ Balances stay in the local SQLite file. They leave the machine only when you
 ask B a question with the finance scope selected, and the panel shows you
 exactly what goes.
 
+## Getting the export in without clicking Import
+
+Two routes, both optional, both idempotent, both run by the nightly cycle:
+
+**A folder.** Drop an export into `var/inbox/` — by hand, from a Downloads
+rule, or via a synced folder from another machine — and the next cycle imports
+it and files it into `processed/`.
+
+**A mailbox.** If eMoney can email you a scheduled report, put `imap_*` in
+`config/secrets.json`, set `pickup.mailbox.enabled` in `config/finance.yaml`,
+and the attachments are pulled by IMAP. Use a dedicated mailbox, not your main
+one.
+
+Every file is fingerprinted by content hash **before** it is parsed, so the
+same export arriving twice — re-dropped, re-sent, sitting in a folder that
+syncs — makes one snapshot rather than two. That matters because the trend is
+built from snapshots: a duplicated August would draw a flat month that never
+happened. The same check covers the manual upload button, so dragging in a file
+that was already picked up tells you so instead of double-counting it.
+
+## Email
+
+Configuration is deliberately the same shape as `trading-helper`'s
+`email_service.py`: `config/secrets.json` first, then the environment, with the
+same key names (`smtp_host`, `smtp_user`, `smtp_pass`, ...). Set SMTP up once
+the same way in both projects, or point this one at the trading desk's file:
+
+```bash
+RETIREMENT_SECRETS=/Users/jambimac/repo/trading-helper/config/secrets.json
+```
+
+One file means one place to rotate a password. It also means this app can read
+every secret the trading desk holds — which is why a separate file is the
+default. `./retire doctor` prints what is configured, without printing any of
+it.
+
 ## Configuration
 
 `config/profile.yaml` — household-level, shared by every module, and where
