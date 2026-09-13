@@ -61,3 +61,59 @@ def test_credentials_without_a_recipient_are_not_configured(secrets_file, monkey
         "smtp_host": "mail.example.com", "smtp_user": "me", "smtp_pass": "x",
     }))
     assert notify.configured() is False
+
+
+def test_email_test_reports_exactly_what_is_missing(secrets_file, monkeypatch, capsys):
+    for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_PASSWORD",
+                "DIGEST_TO", "NOTIFY_TO"):
+        monkeypatch.delenv(key, raising=False)
+    secrets_file.write_text(json.dumps({"smtp_host": "mail.example.com"}))
+
+    from retirement.cli import cmd_email_test
+
+    rc = cmd_email_test(type("A", (), {"to": ""})())
+    out = capsys.readouterr().out
+    assert rc == 1
+    # Column padding is cosmetic; assert on the pairing, not the spaces.
+    fields = dict(line.split() for line in out.splitlines() if len(line.split()) == 2)
+    assert fields["smtp_host"] == "mail.example.com"
+    assert fields["smtp_user"] == "MISSING"
+    assert fields["smtp_pass"] == "MISSING"
+    assert fields["digest_to"] == "MISSING"
+
+
+def test_email_test_reports_a_refused_send_rather_than_raising(secrets_file, monkeypatch, capsys):
+    secrets_file.write_text(json.dumps({
+        "smtp_host": "mail.example.com", "smtp_user": "me@example.com",
+        "smtp_pass": "hunter2", "digest_to": "me@example.com",
+    }))
+    from retirement.core import notify
+
+    def refused(*_a, **_k):
+        raise OSError("[Errno 61] Connection refused")
+
+    monkeypatch.setattr(notify, "send", refused)
+    from retirement.cli import cmd_email_test
+
+    rc = cmd_email_test(type("A", (), {"to": ""})())
+    out = capsys.readouterr().out
+    assert rc == 1 and "send failed" in out and "Connection refused" in out
+
+
+def test_email_test_sends_through_the_configured_path(secrets_file, monkeypatch, capsys):
+    secrets_file.write_text(json.dumps({
+        "smtp_host": "mail.example.com", "smtp_user": "me@example.com",
+        "smtp_pass": "hunter2", "digest_to": "me@example.com, spouse@example.com",
+    }))
+    sent = {}
+    from retirement.core import notify
+
+    monkeypatch.setattr(notify, "send",
+                        lambda subject, html, text="": sent.update(subject=subject, html=html))
+    from retirement.cli import cmd_email_test
+
+    assert cmd_email_test(type("A", (), {"to": ""})()) == 0
+    assert "test" in sent["subject"].lower()
+    out = capsys.readouterr().out
+    assert "spouse@example.com" in out          # says who it went to
+    assert "hunter2" not in out                 # never the password

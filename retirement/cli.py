@@ -132,6 +132,50 @@ def cmd_digest(args) -> int:
     return 0
 
 
+def cmd_email_test(args) -> int:
+    """Prove the path end to end.
+
+    `doctor` says the credentials are PRESENT; only a real send says they WORK.
+    An app-specific password that has been revoked, a port the mini's network
+    blocks, a from-address the provider will not accept -- none of those show
+    up until something tries.
+    """
+    from retirement.core import notify
+
+    status = notify.status()
+    if not status["configured"]:
+        print("✗ email is not configured.")
+        print(f"  secrets file: {status['secrets_file']}")
+        for key, value in (("smtp_host", status["smtp_host"]),
+                           ("smtp_user", status["smtp_user"]),
+                           ("smtp_pass", "set" if status["has_password"] else None),
+                           ("digest_to", ", ".join(status["digest_to"]) or None)):
+            print(f"    {key:<10} {value or 'MISSING'}")
+        return 1
+
+    to = args.to or ", ".join(status["digest_to"])
+    print(f"sending a test message to {to}")
+    print(f"  via {status['smtp_user']}@{status['smtp_host']}:{status['smtp_port']}")
+
+    html = (
+        '<div style="font-family:-apple-system,Helvetica,sans-serif;max-width:520px">'
+        '<p style="font-size:19px;margin:0 0 10px">Email works.</p>'
+        '<p style="color:#6b7280;font-size:13.5px;line-height:1.55;margin:0">'
+        "This is a test from the retirement project on the mini. If you are reading it, "
+        "the nightly digest can reach you. Nothing else was sent."
+        "</p></div>"
+    )
+    try:
+        notify.send("Retirement — test message", html,
+                    "Email works. This is a test from the retirement project.")
+    except Exception as exc:
+        print(f"✗ send failed: {exc}")
+        print("  App-specific password revoked? Port blocked? From-address rejected?")
+        return 1
+    print("✓ sent — check the inbox")
+    return 0
+
+
 def cmd_serve(args) -> int:
     import uvicorn
 
@@ -172,6 +216,10 @@ def main(argv: list[str] | None = None) -> int:
 
     p_doctor = sub.add_parser("doctor", help="what is configured on this machine")
     p_doctor.set_defaults(func=cmd_doctor)
+
+    p_email = sub.add_parser("email-test", help="send one real message to prove the path")
+    p_email.add_argument("--to", default="", help="override the configured recipient")
+    p_email.set_defaults(func=cmd_email_test)
 
     args = parser.parse_args(argv)
     _setup(args.verbose)
