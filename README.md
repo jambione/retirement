@@ -195,7 +195,23 @@ adding more.
 
 ## Running on the mini
 
-Same loop as `trading-helper`: work on the MacBook, ship with a script.
+First time and every time after, one command:
+
+```bash
+./scripts/ship.sh          # push, deploy, route the tunnel, health-check
+./scripts/ship.sh --check  # report state, change nothing
+```
+
+It is idempotent — rerun it after any failure. On a first run it clones to the
+mini, sets up the venv and bootstraps the LaunchAgents; after that it is a
+push-and-restart. The Cloudflare step backs up `~/.cloudflared/config.yml`,
+inserts the hostname above the catch-all, validates with
+`cloudflared tunnel ingress validate`, and rolls back if it does not validate —
+that file is what keeps `trading.jbrasfield.com` up, so nothing there is
+changed in place and unchecked.
+
+Underneath it is the same loop as `trading-helper`: work on the MacBook, ship
+with a script.
 
 ```bash
 ./scripts/deploy_mini.sh              # push + pull on mini + restart
