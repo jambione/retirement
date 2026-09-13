@@ -321,9 +321,10 @@ def value(conn: sqlite3.Connection, config: dict[str, Any], istat: str = "",
             lines.append(
                 f"- {row['title'] or row['listing_id']} · {row['municipality']} · "
                 f"{_euro(row['price'])} · {per_sqm} · score "
-                f"{(row['score'] if row['score'] is not None else float('nan')):.1f} "
-                f"({breakdown.get('band', '?')}), confidence "
-                f"{round((breakdown.get('confidence') or 0) * 100)}%"
+                + (f"{row['score']:.1f} ({breakdown.get('band', '?')})"
+                   if row["score"] is not None
+                   else f"WITHHELD — {breakdown.get('why_not', 'not enough data')}")
+                + f", confidence {round((breakdown.get('confidence') or 0) * 100)}%"
             )
             for component in breakdown.get("components", []):
                 state = "no data" if component["score"] is None else f"{component['score']:.0f}"

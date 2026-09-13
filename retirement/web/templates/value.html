@@ -24,6 +24,16 @@
 .comp .bar i{display:block;height:2px;background:var(--accent)}
 .comp .det{grid-column:1/-1;font-size:12.5px;color:var(--muted);line-height:1.5}
 .comp .src{grid-column:1/-1;font-size:11.5px;color:var(--dim)}
+/* The refusal. It gets more room than the score would have, because "we
+   cannot say" is only useful if it also says what would change that. */
+.withheld{border:1px solid var(--line-2);border-left:2px solid var(--warn);
+  border-radius:var(--r-sm);padding:16px 18px;background:var(--surface-2)}
+.withheld h3{font-family:var(--display);font-weight:600;font-size:17px;letter-spacing:-.01em}
+.withheld p{margin:8px 0 0;font-size:13.5px;color:var(--ink-2);line-height:1.55}
+.withheld ul{margin:12px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:6px;
+  font-size:13px;color:var(--muted);line-height:1.5}
+.withheld .arith{font-size:12.5px;color:var(--dim);margin-top:12px;
+  border-top:1px solid var(--line);padding-top:10px}
 .caveat{font-size:12.5px;color:var(--muted);line-height:1.55;padding-left:14px;position:relative}
 .caveat::before{content:"—";position:absolute;left:0;color:var(--dim)}
 table.vals{width:100%;border-collapse:collapse;font-size:13.5px}
@@ -196,7 +206,18 @@ table.vals td.n{font-family:var(--mono);text-align:right;white-space:nowrap}
     if (data.error) { out.innerHTML = '<div class="result ask-err">' + data.error + '</div>'; return; }
     var html = '<div class="result">';
     if (data.score === null) {
-      html += '<div class="headline"><span class="band">No score — nothing to score against</span></div>';
+      html += '<div class="withheld"><h3>Not enough official data to value this</h3>' +
+              '<p>' + (data.why_not || 'Nothing could be scored for this location.') + '</p>';
+      if (data.needs && data.needs.length) {
+        html += '<ul>' + data.needs.map(function (n) { return '<li>' + n + '</li>'; }).join('') + '</ul>';
+      }
+      if (data.partial_score !== null && data.partial_score !== undefined) {
+        html += '<p class="arith">The arithmetic over what did load comes to ' +
+                data.partial_score.toFixed(1) + ' at ' + Math.round(data.confidence * 100) +
+                '% confidence. It is shown here and nowhere else, because a number built ' +
+                'on this much data is not a verdict about a house.</p>';
+      }
+      html += '</div>';
     } else {
       html += '<div class="headline"><span class="num">' + data.score.toFixed(1) + '</span>' +
               '<span class="band">' + data.band + '</span>' +

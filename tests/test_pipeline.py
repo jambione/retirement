@@ -140,7 +140,7 @@ def test_run_also_scores_against_the_official_record(conn):
     assert store.latest_shortlist(conn)[0]["value"]["score"] is None
 
 
-def test_value_score_appears_once_the_official_data_is_there(conn):
+def test_comune_figures_alone_do_not_make_a_verdict(conn):
     from retirement.modules.property import store
     from retirement.modules.value import store as value_store
 
@@ -161,10 +161,14 @@ def test_value_score_appears_once_the_official_data_is_there(conn):
     FakeSource.payload = [make("a", 180000, 150)]
     summary = pipeline.PropertyModule(CONFIG, conn).run(dry_run=True)
 
-    assert summary["value_scored"] == 1
+    # Demand and hazard now have real figures, but the OMI band does not, so
+    # there is nothing comparing the asking price to what the zone is worth.
+    # The arithmetic is kept; the verdict is withheld and explains itself.
+    assert summary["value_scored"] == 0 and summary["value_no_data"] == 1
     item = store.latest_shortlist(conn)[0]
-    assert item["value"]["score"] is not None
-    assert 0 < item["value"]["confidence"] < 1        # price and yield still absent
+    assert item["value"]["score"] is None
+    assert item["value"]["partial_score"] is not None
+    assert "no OMI band" in item["value"]["why_not"]
     assert "Price vs OMI band" in item["value"]["missing"]
 
 

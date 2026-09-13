@@ -216,8 +216,10 @@ def latest_shortlist(conn: sqlite3.Connection, limit: int = 50) -> list[dict[str
         breakdown = json.loads(raw) if raw else {}
         item["value"] = {
             "score": breakdown.get("score"),
+            "partial_score": breakdown.get("partial_score"),
             "band": breakdown.get("band"),
             "confidence": breakdown.get("confidence"),
+            "why_not": breakdown.get("why_not", ""),
             "missing": [c["label"] for c in breakdown.get("components", [])
                         if c.get("score") is None],
         } if breakdown else None

@@ -193,7 +193,7 @@ a.vchip:hover{border-color:var(--teal);color:var(--ink-2)}
                 <span>{{ (item.value.confidence * 100)|round|int }}%</span></a>
             {% else %}
               <span class="vchip none"
-                    title="No OMI band and no comune statistics for this location — nothing to value it against. See docs/DATA_SOURCES.md.">value n/a</span>
+                    title="{{ item.value.why_not or 'Nothing to value this against yet.' }}{% if item.value.partial_score is not none %} (Arithmetic over what did load: {{ item.value.partial_score }} at {{ (item.value.confidence * 100)|round|int }}% — not a verdict.){% endif %}">value n/a</span>
             {% endif %}
           {% endif %}
           {% if item.verdict %}<span class="pill good">{{ item.verdict }}</span>{% endif %}

@@ -445,7 +445,13 @@ def cmd_value(args) -> int:
             return 0
         head = result["comune"].get("name") or "unknown comune"
         if result["score"] is None:
-            print(f"No score for {head}: nothing to score against.")
+            print(f"Not enough official data to value this — {head}")
+            print(f"  {result.get('why_not', 'nothing to score against.')}")
+            for remedy in result.get("needs", []):
+                print(f"    → {remedy}")
+            if result.get("partial_score") is not None:
+                print(f"  (arithmetic over what did load: {result['partial_score']:.1f} "
+                      f"at {result['confidence'] * 100:.0f}% confidence — not a verdict)")
         else:
             print(f"{result['score']:.1f}/100  ({result['band']})   {head}")
             print(f"  confidence {result['confidence'] * 100:.0f}% of the weight had data")

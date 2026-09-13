@@ -85,7 +85,8 @@ def _card(item: dict[str, Any]) -> str:
                     f' ({value.get("band", "")}, {round((value.get("confidence") or 0) * 100)}%'
                     " of weight had data)</span>")
     elif value:
-        official = ' · <span class="value none">no official data to value it against</span>'
+        why = value.get("why_not") or "no official data to value it against"
+        official = f' · <span class="value none">not valued — {why[:120]}</span>'
     else:
         official = ""
 
