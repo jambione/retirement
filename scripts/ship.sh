@@ -19,7 +19,10 @@ MINI_REPO="${MINI_REPO:-/Users/jambimac/repo/retirement}"
 TUNNEL="${TUNNEL:-56c84116-0ef0-47c7-bbea-25634d765487}"
 HOSTNAME_PUBLIC="${HOSTNAME_PUBLIC:-retirement.jbrasfield.com}"
 PORT="${RETIREMENT_PORT:-8891}"
-GIT_URL="${GIT_URL:-git@github.com:jambione/retirement.git}"
+# Clone the mini from whatever THIS checkout uses, rather than assuming SSH --
+# guessing git@github.com when the working setup is HTTPS fails on a machine
+# with no deploy key, which is exactly the machine a first run lands on.
+GIT_URL="${GIT_URL:-$(git -C "$(cd "$(dirname "$0")/.." && pwd)" remote get-url origin 2>/dev/null || echo https://github.com/jambione/retirement.git)}"
 TRADING_SECRETS="${TRADING_SECRETS:-/Users/jambimac/repo/trading-helper/config/secrets.json}"
 
 DO_CLOUDFLARE=1
