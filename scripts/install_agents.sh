@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# install_agents.sh — install the web + nightly-scan LaunchAgents on the mini.
+# install_agents.sh — install this project's LaunchAgents on the mini:
+# the web UI, the nightly cycle, and its own cloudflared tunnel.
 #
 # Same shape and the same reasoning as trading-helper's install_desk_agent.sh:
 # bootstrapping into gui/<uid> puts the jobs inside the console user's session,
 # which is both what makes the Keychain readable and what lets deploy_mini.sh
 # kickstart them over ssh.
 #
-#   scripts/install_agents.sh           install / re-install both
+#   scripts/install_agents.sh           install / re-install all three
 #   scripts/install_agents.sh --status   are they loaded?
 #   scripts/install_agents.sh --remove   unload and delete both
 set -uo pipefail
 
 REPO="${REPO:-/Users/jambimac/repo/retirement}"
-LABELS=(com.jambi.retirement-web com.jambi.retirement-scan)
+LABELS=(com.jambi.retirement-web com.jambi.retirement-scan com.jambi.retirement-tunnel)
 DOMAIN="gui/$(id -u)"
 
 if [ "$(id -un 2>/dev/null || true)" != "jambimac" ]; then
@@ -68,4 +69,4 @@ done
 echo ""
 echo "Web UI:      http://localhost:8891"
 echo "Nightly scan: 07:15 daily (launchctl kickstart $DOMAIN/com.jambi.retirement-scan to test)"
-echo "Public URL:   route the tunnel first — see scripts/cloudflare_setup.md"
+echo "Tunnel:       its own, separate from the trading desk's (scripts/tunnel_setup.sh)"

@@ -16,7 +16,7 @@ set -euo pipefail
 
 MINI_SSH="${MINI_SSH:-jambimac@Jonathans-Mac-mini.local}"
 MINI_REPO="${MINI_REPO:-/Users/jambimac/repo/retirement}"
-TUNNEL="${TUNNEL:-56c84116-0ef0-47c7-bbea-25634d765487}"
+TUNNEL_NAME="${TUNNEL_NAME:-retirement}"   # our own tunnel, not the trading desk's
 HOSTNAME_PUBLIC="${HOSTNAME_PUBLIC:-retirement.jbrasfield.com}"
 PORT="${RETIREMENT_PORT:-8891}"
 # Clone the mini from whatever THIS checkout uses, rather than assuming SSH --
@@ -60,7 +60,8 @@ ssh_mini "test -d '$MINI_REPO/.git'" 2>/dev/null || NEEDS_CLONE=1
 if [ "$NEEDS_CLONE" = 0 ]; then
   ssh_mini "test -x '$MINI_REPO/.venv/bin/python'" 2>/dev/null || NEEDS_SETUP=1
 fi
-ssh_mini "launchctl print gui/\$(id -u)/com.jambi.retirement-web >/dev/null 2>&1" \
+ssh_mini "launchctl print gui/\$(id -u)/com.jambi.retirement-web >/dev/null 2>&1 && \
+          launchctl print gui/\$(id -u)/com.jambi.retirement-tunnel >/dev/null 2>&1" \
   2>/dev/null || NEEDS_AGENTS=1
 
 if [ "$NEEDS_CLONE"  = 1 ]; then echo "     repo not there yet"; fi
@@ -74,8 +75,9 @@ if [ "$CHECK_ONLY" = 1 ]; then
   else
     echo "  not deployed"
   fi
-  ssh_mini "grep -q '$HOSTNAME_PUBLIC' ~/.cloudflared/config.yml" 2>/dev/null \
-    && ok "ingress rule present" || no "no ingress rule for $HOSTNAME_PUBLIC"
+  ssh_mini "grep -q '$HOSTNAME_PUBLIC' '$MINI_REPO/config/cloudflared-config.yml'" 2>/dev/null \
+    && ok "own tunnel configured for $HOSTNAME_PUBLIC" \
+    || no "tunnel not configured yet"
   curl -sI --max-time 6 "https://$HOSTNAME_PUBLIC/healthz" >/dev/null 2>&1 \
     && ok "$HOSTNAME_PUBLIC answers" || no "$HOSTNAME_PUBLIC does not answer yet"
   exit 0
@@ -122,7 +124,7 @@ fi
 say "Service"
 if [ "$NEEDS_AGENTS" = 1 ]; then
   if ssh_mini "cd '$MINI_REPO' && scripts/install_agents.sh"; then
-    ok "LaunchAgents bootstrapped (web kept alive, 07:15 cycle)"
+    ok "LaunchAgents bootstrapped (web, 07:15 cycle, own tunnel)"
   else
     # gui/<uid> is unreachable when nobody is logged in at the mini's screen.
     # Start it in the foreground anyway so the tunnel has something to hit;
@@ -138,95 +140,18 @@ else
 fi
 
 # ── 3. cloudflare ──────────────────────────────────────────────────────────
-# The tunnel is not configured the way cloudflared's docs assume. On this
-# machine the ingress list lives in the trading-helper repo
-# (config/cloudflared-config.yml, passed with --config), the binary is in
-# Homebrew, and an ssh session's PATH has neither. So find both rather than
-# guessing, and say plainly when they are not there.
+# This project gets its OWN tunnel. The trading desk's ingress list is a file
+# tracked in its repo; adding a hostname there breaks that repo's pull and
+# couples two unrelated projects' restarts. See scripts/tunnel_setup.sh.
 if [ "$DO_CLOUDFLARE" = 1 ]; then
-  say "Cloudflare"
-
-  scp -q scripts/cloudflare_ingress.py "$MINI_SSH:/tmp/cloudflare_ingress.py"
-  ssh_mini "HOSTNAME_PUBLIC='$HOSTNAME_PUBLIC' PORT='$PORT' TUNNEL='$TUNNEL' \
-            CF_CONFIG='${CF_CONFIG:-}' bash -s" <<'REMOTE'
-set -uo pipefail
-PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-
-CFD="$(command -v cloudflared 2>/dev/null || true)"
-[ -z "$CFD" ] && [ -x /opt/homebrew/bin/cloudflared ] && CFD=/opt/homebrew/bin/cloudflared
-[ -z "$CFD" ] && [ -x /usr/local/bin/cloudflared ]    && CFD=/usr/local/bin/cloudflared
-if [ -z "$CFD" ]; then
-  echo "  ✗ cloudflared is not installed on this machine — nothing to configure"
-  exit 1
-fi
-echo "  · cloudflared at $CFD"
-
-for candidate in "$CF_CONFIG" \
-                 "$HOME/repo/trading-helper/config/cloudflared-config.yml" \
-                 "$HOME/.cloudflared/config.yml"; do
-  [ -n "$candidate" ] && [ -f "$candidate" ] && { CFG="$candidate"; break; }
-done
-if [ -z "${CFG:-}" ]; then
-  echo "  ✗ no cloudflared ingress config found. Looked in:"
-  echo "      \$HOME/repo/trading-helper/config/cloudflared-config.yml"
-  echo "      \$HOME/.cloudflared/config.yml"
-  echo "    Pass the real one:  CF_CONFIG=/path/to/config.yml ./scripts/ship.sh"
-  exit 1
-fi
-echo "  · ingress config $CFG"
-
-# DNS. Distinguish "already there" from "failed" -- reporting both as success
-# is how you end up debugging a hostname that was never routed.
-ROUTE_OUT="$("$CFD" tunnel route dns "$TUNNEL" "$HOSTNAME_PUBLIC" 2>&1)"; ROUTE_RC=$?
-if [ "$ROUTE_RC" = 0 ]; then
-  echo "  ✓ DNS route created"
-elif printf '%s' "$ROUTE_OUT" | grep -qi 'already\|exists\|duplicate'; then
-  echo "  ✓ DNS route already in place"
-else
-  echo "  ✗ could not create the DNS route:"
-  printf '      %s\n' "$ROUTE_OUT" | head -4
-  echo "    If it mentions a missing cert.pem, run: $CFD tunnel login"
-  exit 1
-fi
-
-# Ingress.
-BACKUP="$CFG.$(date +%Y%m%d-%H%M%S).bak"
-cp "$CFG" "$BACKUP"
-python3 /tmp/cloudflare_ingress.py "$CFG" "$HOSTNAME_PUBLIC" "$PORT"
-STATUS=$?
-if [ "$STATUS" = 2 ]; then rm -f "$BACKUP"; exit 0; fi          # already present
-if [ "$STATUS" != 0 ]; then cp "$BACKUP" "$CFG"; exit 1; fi     # refused
-echo "  · backed up to $BACKUP"
-
-if "$CFD" --config "$CFG" tunnel ingress validate; then
-  echo "  ✓ config validates"
-else
-  cp "$BACKUP" "$CFG"
-  echo "  ✗ config did NOT validate — rolled back, tunnel untouched"
-  exit 1
-fi
-
-PID="$(pgrep -f 'cloudflared.*tunnel' | head -1)"
-if [ -n "$PID" ]; then
-  kill -HUP "$PID"
-  echo "  ✓ reloaded cloudflared (pid $PID) — trading dashboard not interrupted"
-else
-  echo "  ! cloudflared is not running. Start it the way the desk does:"
-  echo "      cd ~/repo/trading-helper && scripts/restart_cloudflare.sh"
-fi
-
-# That file is tracked in the trading-helper repo, so the edit shows up as a
-# dirty tree there and a later `git pull --ff-only` on that repo will refuse.
-case "$CFG" in
-  */trading-helper/*)
-    echo ""
-    echo "  ! The ingress file lives in the trading-helper repo, so commit it there"
-    echo "    or the next trading deploy will refuse to pull:"
-    echo "      cd ~/repo/trading-helper && git add config/cloudflared-config.yml \\"
-    echo "        && git commit -m 'tunnel: route retirement.jbrasfield.com' && git push"
-    ;;
-esac
-REMOTE
+  say "Tunnel"
+  ssh_mini "cd '$MINI_REPO' && HOSTNAME_PUBLIC='$HOSTNAME_PUBLIC' \
+            RETIREMENT_PORT='$PORT' TUNNEL_NAME='$TUNNEL_NAME' scripts/tunnel_setup.sh" || {
+    no "tunnel setup did not finish — see above"
+    echo "     Everything else is deployed; rerun once that is sorted."
+  }
+  ssh_mini "launchctl kickstart -k gui/\$(id -u)/com.jambi.retirement-tunnel" >/dev/null 2>&1 \
+    && ok "tunnel process restarted" || true
 fi
 
 # ── 3.5 email ──────────────────────────────────────────────────────────────

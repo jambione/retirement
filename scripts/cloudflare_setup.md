@@ -1,71 +1,67 @@
-# Putting this behind retirement.jbrasfield.com
+# retirement.jbrasfield.com
 
-You already run a named tunnel for `trading.jbrasfield.com`
-(`56c84116-0ef0-47c7-bbea-25634d765487`). Adding this app is two changes to
-that same tunnel — **no new tunnel, no new credentials file.** A second tunnel
-would mean a second `cloudflared` process and a second thing to keep running.
+This project runs **its own cloudflared tunnel**, separate from the one serving
+`trading.jbrasfield.com`. `scripts/tunnel_setup.sh` does the whole thing and
+`scripts/ship.sh` calls it, so there is normally nothing to do by hand.
 
-## 1. Route the DNS name to the existing tunnel
+## Why not just add a hostname to the existing tunnel
 
-On the mini, once:
+One tunnel can serve many hostnames, and that was the first design here. It was
+wrong for this machine specifically: the trading tunnel's ingress list lives at
+`trading-helper/config/cloudflared-config.yml`, a file **tracked in that repo**.
+Adding a hostname to it leaves that working tree dirty, so the next
+`deploy_mini.sh` for trading fails its `git pull --ff-only`. Beyond that, every
+later edit, rollback or reload of that file becomes a shared failure mode
+between two projects that have nothing to do with each other.
+
+A tunnel costs nothing and a second `cloudflared` process costs a few MB. The
+two share nothing but the Cloudflare account.
+
+**Do not point this project's config at the trading tunnel's id.** Two processes
+running the same tunnel both connect, each advertising its own ingress list, and
+Cloudflare picks between them per request — the site would work roughly half the
+time, which is harder to diagnose than not working at all.
+
+## What the setup does
+
+1. Finds `cloudflared` (Homebrew, not on the ssh PATH).
+2. Checks `~/.cloudflared/cert.pem` exists — the account certificate. Getting
+   one opens a browser, so if it is missing the script stops and tells you to
+   run `cloudflared tunnel login` once on the mini rather than hanging on a
+   prompt nobody is watching.
+3. Creates the `retirement` tunnel if it does not exist, and writes
+   `config/cloudflared-config.yml` in **this** repo pointing at
+   `http://localhost:8891`. That file is gitignored — it carries a machine
+   specific tunnel id and credentials path.
+4. Validates with `cloudflared tunnel ingress validate`.
+5. Routes `retirement.jbrasfield.com` to it (a proxied CNAME to
+   `<tunnel-id>.cfargotunnel.com` — the dashboard's "DNS only" will not work,
+   that hostname only resolves inside Cloudflare's network).
+
+`com.jambi.retirement-tunnel` keeps the process running, installed alongside the
+web and nightly-cycle agents by `scripts/install_agents.sh`.
+
+## Access
+
+**There is no login in this app.** The finance page carries account names,
+institutions and net worth. Put Cloudflare Access in front of the hostname:
+Zero Trust → Access → Applications → Add → Self-hosted, domain
+`retirement.jbrasfield.com`, policy *Allow* → Emails → your two addresses.
+One-time PIN needs no identity provider setup.
+
+`ship.sh` checks whether anything is in front of the URL and says so at the end.
+Until Access is on, `modules.finance.enabled: false` in `config/profile.yaml`
+holds the balance sheet back while property and board stay up.
+
+## If something is wrong
 
 ```bash
-cloudflared tunnel route dns 56c84116-0ef0-47c7-bbea-25634d765487 retirement.jbrasfield.com
+ssh jambimac@Jonathans-Mac-mini.local
+cd ~/repo/retirement
+cat config/cloudflared-config.yml        # id, hostname, port
+tail -50 logs/tunnel.log
+launchctl kickstart -k gui/$(id -u)/com.jambi.retirement-tunnel
 ```
 
-That writes a proxied CNAME (`retirement` → `<tunnel-id>.cfargotunnel.com`) in
-the `jbrasfield.com` zone. It is idempotent; if the record exists it says so.
-
-## 2. Add the ingress rule
-
-Edit `~/.cloudflared/config.yml` on the mini and add the hostname **above** the
-catch-all. `config/cloudflared-ingress-snippet.yml` in this repo is the merged
-file as it should end up. The catch-all `http_status:404` must remain the last
-entry — cloudflared matches rules top to bottom and anything after a
-service-less rule is dead config.
-
-Then reload. `cloudflared` re-reads its config on SIGHUP, so this does not drop
-the trading dashboard:
-
-```bash
-kill -HUP "$(pgrep -f 'cloudflared.*tunnel.*run')"
-```
-
-Verify both hostnames still answer:
-
-```bash
-curl -sI https://trading.jbrasfield.com | head -1
-curl -sI https://retirement.jbrasfield.com/healthz | head -1
-```
-
-## 3. Put Cloudflare Access in front of it — do this before step 1
-
-**This app has no login.** Anyone who guesses the hostname would get your
-search criteria, your shortlist, your verdicts, and a "Scan now" button that
-spends your API quota. The trading dashboard has `auth.py`; this one
-deliberately does not, because Cloudflare Access does the job better and you
-are already paying nothing for it (free up to 50 users).
-
-In the Zero Trust dashboard: **Access → Applications → Add an application →
-Self-hosted**
-
-- Application domain: `retirement.jbrasfield.com`
-- Session duration: 1 month (so you are not re-authenticating on every glance)
-- Policy: *Allow*, include → **Emails**, and list your address and your wife's
-
-Pick one-time PIN as the identity provider unless you have Google/GitHub SSO
-already wired into Zero Trust. One-time PIN needs no setup and emails a code.
-
-To confirm it is actually on, load the URL in a private window. If you see the
-shortlist without being asked to authenticate, the policy is not applied — fix
-that before you leave it running.
-
-### Why not just skip the tunnel and use Tailscale?
-
-You could, and it would be simpler. The reason to use the tunnel: you want to
-open this on a phone in Italy next spring, possibly on hotel wifi, possibly on
-a device that is not yours. A hostname plus an emailed PIN works anywhere. If
-you would rather it never be reachable from the public internet at all, skip
-this whole document and reach `http://Jonathans-Mac-mini.local:8891` over
-Tailscale instead — the app binds 127.0.0.1, so you would also need to change
-the bind address in `scripts/com.jambi.retirement-web.plist` to `0.0.0.0`.
+The trading tunnel is a different process with a different config; nothing here
+touches it.

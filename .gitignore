@@ -8,3 +8,4 @@ var/
 .DS_Store
 logs/
 config/secrets.json
+config/cloudflared-config.yml

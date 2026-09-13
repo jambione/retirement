@@ -203,12 +203,14 @@ First time and every time after, one command:
 ```
 
 It is idempotent — rerun it after any failure. On a first run it clones to the
-mini, sets up the venv and bootstraps the LaunchAgents; after that it is a
-push-and-restart. The Cloudflare step backs up `~/.cloudflared/config.yml`,
-inserts the hostname above the catch-all, validates with
-`cloudflared tunnel ingress validate`, and rolls back if it does not validate —
-that file is what keeps `trading.jbrasfield.com` up, so nothing there is
-changed in place and unchecked.
+mini, sets up the venv and bootstraps three LaunchAgents (web, nightly cycle,
+tunnel); after that it is a push-and-restart.
+
+This project runs **its own cloudflared tunnel**, separate from the trading
+desk's. The trading tunnel's ingress list is a file tracked in that repo, so
+adding a hostname to it would break that repo's `git pull --ff-only` and couple
+two unrelated projects' restarts. A tunnel is free; isolation is worth more.
+See `scripts/cloudflare_setup.md`.
 
 Underneath it is the same loop as `trading-helper`: work on the MacBook, ship
 with a script.
